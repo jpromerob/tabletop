@@ -110,11 +110,10 @@ if __name__ == '__main__':
     print("Setting machines up ... ")
     CFG_FILE = f"spynnaker_{args.board}.cfg"
     SPIF_IP = spin_spif_map[f"{args.board}"]
-    # os.system(f"rig-power 172.16.223.{args.board-1}")
+    os.system(f"rig-power 172.16.223.{args.board-1}")
 
     print("Generating Kernel ... ")
     kernel = make_whole_kernel(args.ks)
-    # pdb.set_trace()
 
     print("Creating Network ... ")
     SUB_WIDTH = 16
@@ -122,7 +121,6 @@ if __name__ == '__main__':
     WIDTH = args.res_x
     HEIGHT = args.res_y
 
-    # pdb.set_trace()
 
     print("Calculating number of neurons per core")
     pow_2 = [1,2,3,4,5]
