@@ -31,10 +31,14 @@ def send_signal(receiver_ip, receiver_port):
     # Close the socket
     sock.close()
 
-def build_cmd(ip_address, port, dvx, lut):
+def build_cmd(ip_address, port, filename, dvx, lut):
     cmd_base = f"/opt/aestream/build/src/aestream"
     cmd_out = f"output udp {ip_address} {port}"
-    cmd_in = f"input inivation {dvx[0]} {dvx[1]} dvx"
+    # output udp 172.16.223.2 3333 172.16.222.199 3330
+    if filename == "":
+        cmd_in = f"input inivation {dvx[0]} {dvx[1]} dvx"
+    else:
+        cmd_in = f"input file {filename}"
     cmd_lut = f"resolution 640 480 undistortion {lut}.csv"
     cmd = f"{cmd_base} {cmd_out} {cmd_in} {cmd_lut}"
     return cmd
@@ -43,7 +47,7 @@ def build_cmd(ip_address, port, dvx, lut):
 def allow_manual_setup(args):
 
     dvx = [args.device_bus, args.device_id]
-    command = build_cmd(args.calibrator_ip, args.port_streaming, dvx, "cam_lut_undistortion")
+    command = build_cmd(args.calibrator_ip, args.port_streaming, args.filename, dvx, "cam_lut_undistortion")
     process = subprocess.Popen(command, shell=True)
     cam_location_in_progress = True
     time.sleep(1)
@@ -63,7 +67,7 @@ def allow_manual_setup(args):
 def enable_calibration(args):
 
     dvx = [args.device_bus, args.device_id]
-    command = build_cmd(args.calibrator_ip, args.port_calibration, dvx, "cam_lut_undistortion")
+    command = build_cmd(args.calibrator_ip, args.port_calibration, args.filename, dvx, "cam_lut_undistortion")
     process = subprocess.Popen(command, shell=True)
     send_signal(args.calibrator_ip, args.port_intercom)
     try:
@@ -91,6 +95,7 @@ def parse_args():
     parser.add_argument('-db', '--device-bus', type= int, help="Device Bus", default=2)
     parser.add_argument('-di', '--device-id', type= int, help="Device Id", default=2)
     parser.add_argument('-cd', '--duration', type= int, help="Nb of streamed seconds", default=3)
+    parser.add_argument('-fn', '--filename', type=str, help="Recording file name", default="")
 
     return parser.parse_args()
 

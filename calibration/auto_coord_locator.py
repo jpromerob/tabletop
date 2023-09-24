@@ -3,14 +3,14 @@ import aestream
 import time
 import cv2
 import os
-import pdb
 import numpy as np
 import math
 import argparse
 import csv
 import os
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
+import sys
+import pdb
+sys.path.append('../common')
 from tools import add_markers, get_dimensions
 import numpy as np
 from scipy.signal import convolve2d
@@ -89,6 +89,7 @@ def find_marker_coordinates(cluster_list, radius):
         sum_y += y
         pt_counter+= 1
 
+    print(marker_list)
 
     
     max_sum = 0
@@ -124,7 +125,6 @@ def find_marker_coordinates(cluster_list, radius):
     print("Sorted:")
     print(final_list)
 
-    # pdb.set_trace()
 
     return final_list
 
@@ -178,7 +178,6 @@ def modify_lut(homgra):
     for line in old_data_list:
         valid = True
 
-        # pdb.set_trace()
         element = [line[0],-1,-1,-1,-1]
         if int(line[1]) >= 0 and int(line[2]) >=0:
             x = int(line[1])
@@ -219,6 +218,7 @@ def shall_calibrate():
     receiver_ip = "172.16.222.199"
     receiver_port = 5252
 
+    
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((receiver_ip, receiver_port))
 
@@ -262,9 +262,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
 
     parser.add_argument('-p', '--port', type= int, help="Port for events", default=5151)
-    parser.add_argument('-t', '--threshold', type= int, help="Threshold for noise filtering", default=5)
-    parser.add_argument('-r', '--radius', type= int, help="Cluster radius", default=2)
-    parser.add_argument('-e', '--events', type= float, help="Number of events", default=5000)
+    parser.add_argument('-t', '--threshold', type= int, help="Threshold for noise filtering", default=20)
+    parser.add_argument('-r', '--radius', type= int, help="Cluster radius", default=3)
+    parser.add_argument('-e', '--events', type= float, help="Number of events", default=80000)
     parser.add_argument('-s', '--scale', type=float, help="Image scale", default=1.0)
 
     return parser.parse_args()
@@ -319,6 +319,7 @@ if __name__ == '__main__':
                         break
 
             print("All necessary events collected :)")
+            pdb.set_trace()
 
             radius = args.radius
             cluster_list = find_clusters(compressed_array, radius)
