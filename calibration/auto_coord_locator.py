@@ -319,7 +319,6 @@ if __name__ == '__main__':
                         break
 
             print("All necessary events collected :)")
-            pdb.set_trace()
 
             radius = args.radius
             cluster_list = find_clusters(compressed_array, radius)
@@ -359,7 +358,6 @@ if __name__ == '__main__':
 
             cv2.destroyAllWindows()
 
-            # pdb.set_trace()
             modify_lut(homgra)
 
             

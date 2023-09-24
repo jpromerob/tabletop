@@ -101,7 +101,7 @@ def parse_args():
 
 def stream_warped_data(args):
     dvx = [args.device_bus, args.device_id]
-    os.system(build_cmd(args.calibrator_ip, args.port_streaming, dvx, "cam_lut_homography"))
+    os.system(build_cmd(args.calibrator_ip, args.port_streaming, args.filename, dvx, "cam_lut_homography"))
 
 
 if __name__ == '__main__':
