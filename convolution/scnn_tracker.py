@@ -114,7 +114,7 @@ if __name__ == '__main__':
 
     print("Generating Kernel ... ")
     kernel = make_whole_kernel(args.ks)
-    pdb.set_trace()
+    # pdb.set_trace()
 
     print("Creating Network ... ")
     SUB_WIDTH = 16
@@ -123,8 +123,9 @@ if __name__ == '__main__':
     HEIGHT = args.res_y
 
     # pdb.set_trace()
-    pow_2 = [1,2,3,4,5]
 
+    print("Calculating number of neurons per core")
+    pow_2 = [1,2,3,4,5]
     nb_cores = 24 * 48 * 16
     for i in pow_2:
         y = 2**i
