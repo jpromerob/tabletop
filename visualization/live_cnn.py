@@ -7,7 +7,7 @@ import time
 import aestream
 import cv2
 import pdb
-from tools import add_markers, get_dimensions, get_shapes
+from tools import get_dimensions, get_shapes
 import argparse
 import csv
 import os

@@ -3,11 +3,12 @@ import torch.nn as nn
 import random
 import numpy as np
 import math
+import pdb
 import aestream
 import cv2
 import sys
 sys.path.append('../common')
-from tools import add_markers, get_dimensions, get_shapes
+from tools import Dimensions, get_shapes
 import argparse
 import matplotlib.pyplot as plt
 import socket
@@ -24,7 +25,7 @@ def parse_args():
 
     parser.add_argument('-p0', '--port-0', type= int, help="Port for events", default=3330)
     parser.add_argument('-p1', '--port-1', type= int, help="Port for events", default=3331)
-    parser.add_argument('-s', '--scale', type=int, help="Image scale", default=1)
+    parser.add_argument('-vs', '--vis-scale', type=int, help="Visualization scale", default=1)
 
     return parser.parse_args()
 
@@ -32,34 +33,39 @@ if __name__ == '__main__':
 
 
     args = parse_args()
+        
+    # Load the Dimensions object from the file
+    dim = Dimensions.load_from_file('../common/homdim.pkl')
+    
+    # pdb.set_trace()
+
     cv2.namedWindow('Airhocket Display')
 
     # Create a UDP socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Stream events from UDP port 3333 (default)
-    black = np.zeros((640,480,3))
+    black = np.zeros((dim.fl,dim.fw,3))
     frame = black
 
 
-    l, w, ml, mw, dlx, dly = get_dimensions()
-    field, line, goals, circles, radius = get_shapes(l, w, ml, mw, dlx, dly, args.scale)
+    field, line, goals, circles, radius = get_shapes(dim, args.vis_scale)
     red = (0, 0, 255)
 
     # pdb.set_trace()
 
-    original_img = torch.zeros(1, 1, 640, 480)
-    convolved_img = torch.zeros(1, 1, 640, 480)
+    original_img = torch.zeros(1, 1, dim.fl, dim.fw)
+    convolved_img = torch.zeros(1, 1, dim.fl, dim.fw)
 
     avg_row_idx = 10
     avg_col_idx = 10
     kernel = np.load("../common/kernel.npy")
     k_sz = len(kernel)
     print(f"Kernel {k_sz} px")
-    x_k = int((640-k_sz)/2)+1
-    y_k = int((480-k_sz)/2)+1
-    with aestream.UDPInput((640, 480), device = 'cpu', port=args.port_0) as original:
-        with aestream.UDPInput((640, 480), device = 'cpu', port=args.port_1) as convolved:
+    x_k = int((dim.fl-k_sz)/2)+1
+    y_k = int((dim.fw-k_sz)/2)+1
+    with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_0) as original:
+        with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_1) as convolved:
                     
             while True:
 
@@ -71,10 +77,11 @@ if __name__ == '__main__':
                 conv_out = np.squeeze(convolved_img.numpy())
 
                 frame = black
-                frame[x_k:x_k+k_sz,y_k:y_k+k_sz,2] = 100*kernel
+                # frame[x_k:x_k+k_sz,y_k:y_k+k_sz,2] = 100*kernel
                 frame[:,:,1] = orig_out
-                frame[int(k_sz/2):640-int(k_sz/2),int(k_sz/2):480-int(k_sz/2),0] = conv_out[0:640-k_sz+1,0:480-k_sz+1]
+                frame[int(k_sz/2):dim.fl-int(k_sz/2),int(k_sz/2):dim.fw-int(k_sz/2),0] = conv_out[0:dim.fl-k_sz+1,0:dim.fw-k_sz+1]
                 
+                conv_out[0:int(dim.fl/4),:] = np.zeros((int(dim.fl/4),dim.fw))
                 row_indices, column_indices = np.where(conv_out > 0.1)
                 if np.sum(conv_out) > 5:
                     
@@ -84,15 +91,18 @@ if __name__ == '__main__':
                         # print(f"({avg_row_idx},{avg_col_idx})")
                 
                 
-                image = cv2.resize(frame.transpose(1,0,2), (math.ceil(640*args.scale),math.ceil(480*args.scale)), interpolation = cv2.INTER_AREA)
+                image = cv2.resize(frame.transpose(1,0,2), (math.ceil(dim.fl*args.vis_scale),math.ceil(dim.fw*args.vis_scale)), interpolation = cv2.INTER_AREA)
                 # pdb.set_trace()
                 
 
-                cv2.circle(image, (avg_row_idx*args.scale, avg_col_idx*args.scale), 5*args.scale, color=(255,0,255), thickness=-2)
+                # Ignore the 1/4 of play field on opponents side
+                if avg_row_idx >= dim.fl*1/4:
+                    # Draw Tracker
+                    cv2.circle(image, (avg_row_idx*args.vis_scale, avg_col_idx*args.vis_scale), 5*args.vis_scale, color=(255,0,255), thickness=-2)
 
-                # Send Coordinates
-                message = f"{avg_row_idx},{avg_col_idx}"
-                sock.sendto(message.encode(), (receiver_ip, receiver_port))
+                    # Send Coordinates
+                    message = f"{avg_row_idx},{avg_col_idx}"
+                    sock.sendto(message.encode(), (receiver_ip, receiver_port))
 
                 # Define the four corners of the field
                 corners = np.array(field, np.int32)
