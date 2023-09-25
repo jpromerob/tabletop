@@ -10,6 +10,9 @@ import paramiko
 import socket
 import argparse
 import time
+import sys
+sys.path.append('../common')
+from tools import Dimensions
 
 '''
 JPRB 25/09/2023 14:15: I have the impression that:
@@ -54,9 +57,13 @@ def make_kernel_circle(r, k_sz,weight, kernel):
     dy = np.round(r * np.cos(a)).astype("uint32")
     kernel[var + dx, var + dy] = weight
 
-def make_whole_kernel(k_sz):
+def make_whole_kernel(k_sz, hs):
 
-    pos_radi = [19,11,5]
+    k_sz = int(k_sz*hs)
+    if k_sz%2 == 0:
+        k_sz += 1
+
+    pos_radi = np.array([19,11,5])*hs
 
     w_scaler = 0.008
     pos_w = 1
@@ -103,27 +110,28 @@ def parse_args():
     parser.add_argument('-ip', '--ip-out', type= str, help="IP out", default="172.16.222.199")
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
-    parser.add_argument('-rx', '--res-x', type=int, help="Resolution (X: width)", default=640)
-    parser.add_argument('-ry', '--res-y', type=int, help="Resolution (Y: height)", default=480)
 
     return parser.parse_args()
 
 if __name__ == '__main__':
 
     args = parse_args()
+
+    dim = Dimensions.load_from_file('../common/homdim.pkl')
     print("Setting machines up ... ")
     CFG_FILE = f"spynnaker_{args.board}.cfg"
     SPIF_IP = spin_spif_map[f"{args.board}"]
     os.system(f"rig-power 172.16.223.{args.board-1}")
 
     print("Generating Kernel ... ")
-    kernel = make_whole_kernel(args.ks)
+    kernel = make_whole_kernel(args.ks, dim.hs)
 
     print("Creating Network ... ")
     SUB_WIDTH = 16
     SUB_HEIGHT = 8
-    WIDTH = args.res_x
-    HEIGHT = args.res_y
+    WIDTH = dim.fl
+    HEIGHT = dim.fw
+
 
 
     print("Calculating number of neurons per core")
@@ -140,7 +148,6 @@ if __name__ == '__main__':
     
     print(f"NPC: {x} x {y}")
 
-    # pdb.set_trace()
 
     NPC_X = x
     NPC_Y = y
@@ -220,6 +227,7 @@ if __name__ == '__main__':
     p.external_devices.activate_live_output_to(target_pop, spif_output)
 
 
+    pdb.set_trace()
     p.run(RUN_TIME)
 
     p.end()
