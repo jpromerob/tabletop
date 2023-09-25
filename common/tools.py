@@ -1,66 +1,74 @@
 
 import numpy as np
+import pdb
+import pickle
 
-def add_markers(im_acc, radius, points, color):
+
+class Dimensions:
+    def __init__(self, l, w, il, iw, d2ex, d2ey, gs, gd, cmr, hs):
+        self.l = int(l*hs)
+        self.w = int(w*hs)
+        self.il = int(il*hs) # inner length (between LEDs)
+        self.iw = int(iw*hs) # inner width (between LEDs)
+        self.d2ex = int(d2ex*hs) # distance from LED to edge (x axis)
+        self.d2ey = int(d2ey*hs) # distance from LED to edge (y axis)
+        self.ml = int((self.l-self.il)/2)
+        self.mw = int((self.w-self.iw)/2)
+        self.fl = 2*self.d2ex+self.il
+        self.fw = 2*self.d2ey+self.iw
+        self.gs = int(gs*hs) # goal size
+        self.gd = int(gd*hs) # goal depth
+        self.cmr = int(cmr*hs) # circle mark radius
+        self.hs = hs
+
+    def save_to_file(self, filename):
+        with open(filename, 'wb') as file:
+            pickle.dump(self, file)
+
+    @staticmethod
+    def load_from_file(filename):
+        with open(filename, 'rb') as file:
+            return pickle.load(file)
+
+
+def get_dimensions(hom_scale):
+
+    dim = Dimensions(640, 480, 288, 174, 76, 56, 90, 10, 30, hom_scale)
+    return dim
+
+
+def get_shapes(dim, vis_scale):
 
     # pdb.set_trace()
 
-    for idx in range(len(points)):
-        for i in range(-radius, radius+1):
-            for j in range(-radius, radius+1):
-                im_acc[points[idx][1]+i, points[idx][0]+j] = color
-    
-    return im_acc 
-
-
-def get_dimensions():
-
-    l = 288
-    w = 174
-    dlx = 76
-    dly = 56
-
-    # Homography centered within 640x480
-    ml = int((640-l)/2)
-    mw = int((480-w)/2)
-
-    
-    # Homography shows Play Area ONLY
-    # ml = 120
-    # mw = 80
-    return l, w, ml, mw, dlx, dly
-
-def get_shapes(l, w, ml, mw, dlx, dly, scale):
-
-    tl = [(ml-dlx)*scale, (mw-dly)*scale]
-    tr = [(ml+l+dlx)*scale, (mw-dly)*scale]
-    bl = [(ml-dlx)*scale, (mw+w+dly)*scale]
-    br = [(ml+l+dlx)*scale, (mw+w+dly)*scale]
+    tl = [(0)*vis_scale, (0)*vis_scale]
+    tr = [(dim.fl-1)*vis_scale, (0)*vis_scale]
+    bl = [(0)*vis_scale, (dim.fw-1)*vis_scale]
+    br = [(dim.fl-1)*vis_scale, (dim.fw-1)*vis_scale]
 
     field = [bl, tl, tr, br]
 
-    line = [((ml+int(l/2))*scale, (mw-dly)*scale),((ml+int(l/2))*scale, (mw+w+dly)*scale)]
+    line = [(int(dim.fl/2)*vis_scale, (0)*vis_scale), (int(dim.fl/2)*vis_scale, (dim.fw-1)*vis_scale)]
 
-    c1 = [(ml)*scale, (mw+w)*scale]
-    c2 = [(ml)*scale, (mw)*scale]
-    c3 = [(ml+l)*scale, (mw)*scale]
-    c4 = [(ml+l)*scale, (mw+w)*scale]
-    c5 = [(ml+int(l/2))*scale, (mw+int(w/2))*scale]
+    c1 = [(dim.d2ex)*vis_scale, (dim.d2ey+dim.iw)*vis_scale]
+    c2 = [(dim.d2ex)*vis_scale, (dim.d2ey)*vis_scale]
+    c3 = [(dim.d2ex+dim.il)*vis_scale, (dim.d2ey)*vis_scale]
+    c4 = [(dim.d2ex+dim.il)*vis_scale, (dim.d2ey+dim.iw)*vis_scale]
+    c5 = [(dim.d2ex+int(dim.il/2))*vis_scale, (dim.d2ey+int(dim.iw/2))*vis_scale]
 
     circles = [c1, c2, c3, c4, c5]
-    radius = 30*scale
+    radius = dim.cmr*vis_scale
 
     # Coordinates of rectangles that define the goals
-    goal_l = 90
-    goal_depth = 20
-    gu = int((480-goal_l)/2)*scale
-    gb = gu + goal_l*scale
-    gl_l = (ml-dlx-goal_depth)*scale
-    gl_r = (ml-dlx)*scale
-    gr_l = (ml+l+dlx)*scale
-    gr_r = (ml+l+dlx+goal_depth)*scale
+    gu = int((dim.fw-dim.gs)/2)*vis_scale
+    gb = gu + dim.gs*vis_scale
+    gl_l = (0)*vis_scale
+    gl_r = (dim.gd)*vis_scale
+    gr_l = (dim.fl-dim.gd)*vis_scale
+    gr_r = (dim.fl-1)*vis_scale
     goal_1 = [[gl_l,gu], [gl_r, gu], [gl_r, gb], [gl_l, gb]]
     goal_2 = [[gr_l,gu], [gr_r, gu], [gr_r, gb], [gr_l, gb]]
     goals = [goal_1, goal_2]
 
+    # pdb.set_trace()
     return field, line, goals, circles, radius
