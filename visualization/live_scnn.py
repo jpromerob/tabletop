@@ -77,7 +77,7 @@ if __name__ == '__main__':
                 conv_out = np.squeeze(convolved_img.numpy())
 
                 frame = black
-                # frame[x_k:x_k+k_sz,y_k:y_k+k_sz,2] = 100*kernel
+                frame[x_k:x_k+k_sz,y_k:y_k+k_sz,2] = 100*kernel
                 frame[:,:,1] = orig_out
                 frame[int(k_sz/2):dim.fl-int(k_sz/2),int(k_sz/2):dim.fw-int(k_sz/2),0] = conv_out[0:dim.fl-k_sz+1,0:dim.fw-k_sz+1]
                 
