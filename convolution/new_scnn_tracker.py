@@ -11,9 +11,10 @@ import socket
 import argparse
 import time
 
+
 '''
-JPRB 25/09/2023 14:15: I have the impression that:
- - this is the best SCNN so far ... 
+JPRB 25/09/2023 14:38: I have the impression that:
+ - when the puck moves to fast, it's not properly tracked ... 
 '''
 
 def send_kernel():
@@ -58,7 +59,7 @@ def make_whole_kernel(k_sz):
 
     pos_radi = [19,11,5]
 
-    w_scaler = 0.008
+    w_scaler = 0.012
     pos_w = 1
     neg_w = -pos_w * 0.50
     gen_w = neg_w * 0.35
@@ -186,9 +187,9 @@ if __name__ == '__main__':
         [POP_LABEL], SPIF_IP, SPIF_PORT)
     conn.add_receive_callback(POP_LABEL, recv_nid)
 
-    cell_params = {'tau_m': 10.0,
-                'tau_syn_E': 5.0,
-                'tau_syn_I': 5.0,
+    cell_params = {'tau_m': 5.0,
+                'tau_syn_E': 1.0,
+                'tau_syn_I': 1.0,
                 'v_rest': -65.0,
                 'v_reset': -65.0,
                 'v_thresh': -60.0,
