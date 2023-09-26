@@ -17,8 +17,10 @@ def parse_args():
 
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
 
-    parser.add_argument('-p', '--port', type= int, help="Port for events", default=5151)
+    parser.add_argument('-p', '--port', type= int, help="Port for events", default=5050)
     parser.add_argument('-s', '--scale', type=int, help="Image scale", default=1)
+    parser.add_argument('-l', '--length', type=int, help="Image length", default=640)
+    parser.add_argument('-w', '--width', type=int, help="Image width", default=480)
 
     return parser.parse_args()
 
@@ -26,43 +28,22 @@ if __name__ == '__main__':
 
 
     args = parse_args()
-    cv2.namedWindow('Airhocket Display')
+    new_l = math.ceil(args.length*args.scale)
+    new_w = math.ceil(args.width*args.scale)
+    window_name = 'Airhockey Display'
+    cv2.namedWindow(window_name)
 
     # Stream events from UDP port 3333 (default)
-    black = np.zeros((640,480,3))
-    frame = black
+    frame = np.zeros((args.length,args.width,3))
 
-
-    l, w, ml, mw, dlx, dly = get_dimensions()
-    field, line, goals, circles, radius = get_shapes(l, w, ml, mw, dlx, dly, args.scale)
-    red = (0, 0, 255)
-
-    print(line)
-    with aestream.UDPInput((640, 480), device = 'cpu', port=args.port) as stream1:
+    with aestream.UDPInput((args.length, args.width), device = 'cpu', port=args.port) as stream1:
                 
         while True:
 
 
-            frame[0:640,0:480,1] =  stream1.read().numpy() # Provides a (640, 480) tensor           
-
-
-
-            image = cv2.resize(frame.transpose(1,0,2), (math.ceil(640*args.scale),math.ceil(480*args.scale)), interpolation = cv2.INTER_AREA)
-            
-            # Define the four corners of the field
-            corners = np.array(field, np.int32)
-            cv2.polylines(image, [corners], isClosed=True, color=red, thickness=1)
-
-            for goal in goals:
-                corners = np.array(goal, np.int32)
-                cv2.polylines(image, [corners], isClosed=True, color=red, thickness=1)
-
-            for cx, cy in circles:
-                # print(f"Center: x={cx}, y={cy}")
-                cv2.circle(image, (cx, cy), radius, color=red, thickness=1)
-            cv2.line(image, line[0], line[1], color=red, thickness=1)
-
-            cv2.imshow('Airhocket Display', image)
+            frame[0:args.length,0:args.width,1] =  stream1.read().numpy() 
+            image = cv2.resize(frame.transpose(1,0,2), (new_l, new_w), interpolation = cv2.INTER_AREA)
+            cv2.imshow(window_name, image)
             cv2.waitKey(1)
 
 

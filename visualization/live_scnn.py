@@ -81,7 +81,7 @@ if __name__ == '__main__':
                 frame[:,:,1] = orig_out
                 frame[int(k_sz/2):dim.fl-int(k_sz/2),int(k_sz/2):dim.fw-int(k_sz/2),0] = conv_out[0:dim.fl-k_sz+1,0:dim.fw-k_sz+1]
                 
-                conv_out[0:int(dim.fl/4),:] = np.zeros((int(dim.fl/4),dim.fw))
+                # conv_out[0:int(dim.fl/4),:] = np.zeros((int(dim.fl/4),dim.fw))
                 row_indices, column_indices = np.where(conv_out > 0.1)
                 if np.sum(conv_out) > 5:
                     
@@ -96,13 +96,14 @@ if __name__ == '__main__':
                 
 
                 # Ignore the 1/4 of play field on opponents side
-                if avg_row_idx >= dim.fl*1/4:
-                    # Draw Tracker
-                    cv2.circle(image, (avg_row_idx*args.vis_scale, avg_col_idx*args.vis_scale), 5*args.vis_scale, color=(255,0,255), thickness=-2)
+                # if avg_row_idx >= dim.fl*1/4:
 
-                    # Send Coordinates
-                    message = f"{avg_row_idx},{avg_col_idx}"
-                    sock.sendto(message.encode(), (receiver_ip, receiver_port))
+                # Draw Tracker
+                cv2.circle(image, (avg_row_idx*args.vis_scale, avg_col_idx*args.vis_scale), 5*args.vis_scale, color=(255,0,255), thickness=-2)
+
+                # Send Coordinates
+                message = f"{avg_row_idx},{avg_col_idx}"
+                sock.sendto(message.encode(), (receiver_ip, receiver_port))
 
                 # Define the four corners of the field
                 corners = np.array(field, np.int32)
