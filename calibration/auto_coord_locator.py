@@ -9,7 +9,6 @@ import argparse
 import csv
 import os
 import sys
-import pdb
 sys.path.append('../common')
 from tools import get_dimensions
 import numpy as np
@@ -18,19 +17,20 @@ import paramiko
 import socket
 
 
+NATIVE_RES_X = 640
+NATIVE_RES_Y = 480
 
-
-def send_lut():
+def send_dimensions():
     # Define the connection parameters
-    hostname = '172.16.222.30'  # IP address or hostname of Computer B
+    hostname = '172.16.223.5'  # IP address or hostname of Computer B
     port = 22  # Default SSH port is 22
     username = 'juan'
     password = '@Q9ep427x'  # Replace with your actual password
 
     # Define the local add remote file paths
-    local_file_path = 'cam_lut_homography.csv'  # Path to the file on Computer A
-    remote_file_path = '/home/juan/tabletopia/cam_lut_homography.csv'  # Path to the destination on Computer B
-
+    local_file_path = '../common/homdim.pkl'  # Path to the file on Computer A
+    remote_file_path = '/home/juan/tabletop/common/homdim.pkl'  # Path to the destination on Computer B
+    
 
     # Create an SSH client
     ssh_client = paramiko.SSHClient()
@@ -54,8 +54,8 @@ def send_lut():
 def find_clusters(compressed_array, radius):
     margin = 2*radius
     cluster_list = []
-    for x in range(dim.l-margin):
-        for y in range(dim.w-margin):
+    for x in range(NATIVE_RES_X-margin):
+        for y in range(NATIVE_RES_X-margin):
             cluster = compressed_array[x:x+margin, y:y+margin]
             if np.sum(cluster) >= 4:            
                 cluster_list.append((x+radius, y+radius))
@@ -89,11 +89,9 @@ def find_marker_coordinates(cluster_list, radius):
         sum_y += y
         pt_counter+= 1
 
-    print(marker_list)
-
     
     max_sum = 0
-    min_sum = dim.l+dim.w
+    min_sum = NATIVE_RES_X+NATIVE_RES_Y
     avg_x = 0
     for index, point in enumerate(marker_list):
         x, y = point
@@ -139,19 +137,23 @@ def get_dst_pts(dim):
 
     return pts_dst
 
-def get_new_coord(x, y, h, dim):
-
-    # pdb.set_trace()
+def get_new_coord(x, y, h, dim, marker_list, radius):
 
     idx_x = int((x*h[0][0]+y*h[0][1]+h[0][2])/(x*h[2][0]+y*h[2][1]+h[2][2]))
     idx_y = int((x*h[1][0]+y*h[1][1]+h[1][2])/(x*h[2][0]+y*h[2][1]+h[2][2]))
     if not(idx_x >= 0 and idx_x < dim.d2ex+dim.il+dim.d2ex and idx_y >= 0 and idx_y < dim.d2ey+dim.iw+dim.d2ey):
         idx_x = -1
-        idx_y = -1            
+        idx_y = -1        
+
+    # Ignore pixels where LEDs are
+    for ml_x, ml_y in marker_list:
+        if math.sqrt((x-ml_x)**2+(y-ml_y)**2) <= radius :
+            idx_x = -1
+            idx_y = -1     
 
     return idx_x, idx_y
 
-def modify_lut(homgra, dim):
+def modify_lut(homgra, dim, marker_list, radius):
     
     h = homgra #np.loadtxt('homgra.txt')
     
@@ -181,13 +183,13 @@ def modify_lut(homgra, dim):
         if int(line[1]) >= 0 and int(line[2]) >=0:
             x = int(line[1])
             y = int(line[2])
-            new_x, new_y = get_new_coord(x, y, h, dim)
+            new_x, new_y = get_new_coord(x, y, h, dim, marker_list, radius)
             element[1] = new_x
             element[2] = new_y
         if int(line[3]) >= 0 and int(line [4]) >=0:
             x = int(line[3])
             y = int(line[4])
-            new_x, new_y = get_new_coord(x, y, h, dim)
+            new_x, new_y = get_new_coord(x, y, h, dim, marker_list, radius)
             element[3] = new_x
             element[4] = new_y
         
@@ -276,8 +278,8 @@ if __name__ == '__main__':
     cv2.namedWindow('TableTopTracker')
 
     # Stream events from UDP port 3333 (default)
-    frame = np.zeros((dim.l,dim.w,3))
-    accumulator = np.zeros((dim.l,dim.w,3))
+    frame = np.zeros((NATIVE_RES_X,NATIVE_RES_Y,3))
+    accumulator = np.zeros((NATIVE_RES_X,NATIVE_RES_Y,3))
 
 
     print("Waiting for Calibration signal")
@@ -288,12 +290,11 @@ if __name__ == '__main__':
             print("Starting new calibration")
 
             frame_counter = 0
-            with aestream.UDPInput((dim.l, dim.w), device = 'cpu', port=args.port) as stream1:
+            with aestream.UDPInput((NATIVE_RES_X, NATIVE_RES_Y), device = 'cpu', port=args.port) as stream1:
                         
                 while True:
 
-
-                    frame[0:dim.l,0:dim.w,1] =  stream1.read().numpy() # Provides a (640, 480) tensor
+                    frame[0:NATIVE_RES_X,0:NATIVE_RES_Y,1] =  stream1.read().numpy() # Provides a (640, 480) tensor
                     
                     if frame_counter == 0:
                         start_time = time.time()
@@ -304,12 +305,13 @@ if __name__ == '__main__':
 
                     if total_sum < args.events:
                         accumulator += frame
-                        image = cv2.resize(accumulator.transpose(1,0,2), (math.ceil(dim.l*args.vis_scale),math.ceil(dim.w*args.vis_scale)), interpolation = cv2.INTER_AREA)
+                        image = cv2.resize(accumulator.transpose(1,0,2), (math.ceil(NATIVE_RES_X*args.vis_scale),math.ceil(NATIVE_RES_Y*args.vis_scale)), interpolation = cv2.INTER_AREA)
                         # cv2.imshow('TableTopTracker', image)
                         # cv2.waitKey(1)
                     else:
                         planar_acc = np.sum(accumulator, axis=2)
-                        compressed_array = np.where(planar_acc > args.threshold, 1, 0)            
+                        compressed_array = np.where(planar_acc > args.threshold, 1, 0)           
+                        
                         break
 
             print("All necessary events collected :)")
@@ -319,13 +321,12 @@ if __name__ == '__main__':
             marker_list = find_marker_coordinates(cluster_list, radius)
 
             # Save Accumulated Image with Markers
-            im_acc = cv2.resize(10*accumulator.transpose(1,0,2), (math.ceil(dim.l*args.vis_scale),math.ceil(dim.w*args.vis_scale)), interpolation = cv2.INTER_AREA)
+            im_acc = cv2.resize(10*accumulator.transpose(1,0,2), (math.ceil(NATIVE_RES_X*args.vis_scale),math.ceil(NATIVE_RES_Y*args.vis_scale)), interpolation = cv2.INTER_AREA)
             for x, y in marker_list:
                 image[y-radius:y+radius, x-radius:x+radius, :] = [0,0,255]
             cv2.imwrite('Accumulated.png', im_acc)
 
 
-            cv2.destroyAllWindows()
 
 
 
@@ -340,7 +341,6 @@ if __name__ == '__main__':
             homgra, status = cv2.findHomography(pts_src, pts_dst)
             np.savetxt("homgra.txt", homgra)
 
-            # pdb.set_trace()
             print("Warping Perspective")
             # Warp source image to destination based on homography
             im_fix = cv2.warpPerspective(im_mkd, homgra, (2*dim.d2ex+dim.il, 2*dim.d2ey+dim.iw), flags=cv2.INTER_LINEAR)
@@ -352,7 +352,7 @@ if __name__ == '__main__':
 
             cv2.destroyAllWindows()
 
-            modify_lut(homgra, dim)
+            modify_lut(homgra, dim, marker_list, radius)
 
             
             # Record the end time
@@ -362,7 +362,7 @@ if __name__ == '__main__':
             elapsed_time = int(end_time - start_time)
             print(f"Elapsed time: {elapsed_time} seconds")
 
-            send_lut()
+            send_dimensions()
 
             print("Waiting for NEW Calibration signal")
 
