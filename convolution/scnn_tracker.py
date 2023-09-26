@@ -11,6 +11,7 @@ import socket
 import argparse
 import time
 import sys
+import select
 sys.path.append('../common')
 from tools import Dimensions
 
@@ -18,6 +19,15 @@ from tools import Dimensions
 JPRB 25/09/2023 14:15: I have the impression that:
  - this is the best SCNN so far ... 
 '''
+
+def input_with_timeout(prompt, timeout):
+    print(prompt, end='', flush=True)
+    rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+    
+    if rlist:
+        return sys.stdin.readline().strip()
+    else:
+        return None
 
 def send_kernel():
     # Define the connection parameters
@@ -88,9 +98,6 @@ def make_whole_kernel(k_sz, hs):
 
     plt.savefig("kernel.png")
 
-
-    sum_k = np.sum(kernel)
-    print(f"Kernel Sum: {sum_k}")
     
     return kernel
 
@@ -121,20 +128,16 @@ if __name__ == '__main__':
     print("Setting machines up ... ")
     CFG_FILE = f"spynnaker_{args.board}.cfg"
     SPIF_IP = spin_spif_map[f"{args.board}"]
-    os.system(f"rig-power 172.16.223.{args.board-1}")
 
     print("Generating Kernel ... ")
     kernel = make_whole_kernel(args.ks, dim.hs)
 
-    print("Creating Network ... ")
+    print("Configuring Infrastructure ... ")
     SUB_WIDTH = 16
     SUB_HEIGHT = 8
     WIDTH = dim.fl
     HEIGHT = dim.fw
 
-
-
-    print("Calculating number of neurons per core")
     pow_2 = [1,2,3,4,5]
     nb_cores = 24 * 48 * 16
     for i in pow_2:
@@ -146,9 +149,6 @@ if __name__ == '__main__':
         if (x*y >= (WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
             break
     
-    print(f"NPC: {x} x {y}")
-
-
     NPC_X = x
     NPC_Y = y
 
@@ -159,11 +159,6 @@ if __name__ == '__main__':
     RUN_TIME = 1000*60*240
     CHIP = (0, 0)
 
-    convolution = p.ConvolutionConnector(kernel_weights=kernel)
-    out_width, out_height = convolution.get_post_shape((WIDTH, HEIGHT))
-
-    print(f"Output {out_width} x {out_height}")
-    time.sleep(5)
 
     P_SHIFT = 15
     Y_SHIFT = 0
@@ -188,6 +183,7 @@ if __name__ == '__main__':
         sock.sendto(data, (MY_PC_IP, MY_PC_PORT))
 
 
+    print("Creating Network ... ")
 
     conn = p.external_devices.SPIFLiveSpikesConnection(
         [POP_LABEL], SPIF_IP, SPIF_PORT)
@@ -215,6 +211,8 @@ if __name__ == '__main__':
             sub_width=SUB_WIDTH, sub_height=SUB_HEIGHT, chip_coords=CHIP),
         label="retina")
 
+    convolution = p.ConvolutionConnector(kernel_weights=kernel)
+    out_width, out_height = convolution.get_post_shape((WIDTH, HEIGHT))
 
     target_pop = p.Population(
         out_width * out_height, celltype(**cell_params),
@@ -227,7 +225,19 @@ if __name__ == '__main__':
     p.external_devices.activate_live_output_to(target_pop, spif_output)
 
 
-    pdb.set_trace()
+    try:
+        print("List of parameters:")
+        print(f"\tNPC: {x} x {y}")
+        print(f"\tOutput {out_width} x {out_height}")
+        print(f"\tKernel Size: {len(kernel)}")
+        print(f"\tKernel Sum: {np.sum(kernel)}")
+        user_input = input_with_timeout("Happy? ", 20)
+    except KeyboardInterrupt:
+        print("\n Simulation cancelled")
+        quit()
+
+    print("Waiting for rig-power to end ... ")    
+    os.system(f"rig-power 172.16.223.{args.board-1}")
     p.run(RUN_TIME)
 
     p.end()
