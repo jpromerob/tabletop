@@ -73,12 +73,12 @@ def make_whole_kernel(k_sz, hs):
     if k_sz%2 == 0:
         k_sz += 1
 
-    pos_radi = np.array([19,11,5])*hs
+    pos_radi = np.array([20,9])*hs
 
-    w_scaler = 0.008
+    w_scaler = 0.012
     pos_w = 1
-    neg_w = -pos_w * 0.50
-    gen_w = neg_w * 0.35
+    neg_w = -pos_w * 0.20
+    gen_w = neg_w * 0.50
 
     kernel = gen_w*w_scaler*np.ones((k_sz, k_sz), dtype=np.float32)
 
@@ -190,8 +190,8 @@ if __name__ == '__main__':
     conn.add_receive_callback(POP_LABEL, recv_nid)
 
     cell_params = {'tau_m': 10.0,
-                'tau_syn_E': 5.0,
-                'tau_syn_I': 5.0,
+                'tau_syn_E': 1.0,
+                'tau_syn_I': 1.0,
                 'v_rest': -65.0,
                 'v_reset': -65.0,
                 'v_thresh': -60.0,
@@ -200,7 +200,7 @@ if __name__ == '__main__':
                 'i_offset': 0.0
                 }
 
-    p.setup(timestep=1.0, n_boards_required=24,  cfg_file=CFG_FILE)
+    p.setup(timestep=1.0, n_boards_required=24)
 
     celltype = p.IF_curr_exp
     p.set_number_of_neurons_per_core(celltype, (NPC_X, NPC_Y))
