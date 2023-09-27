@@ -1,4 +1,5 @@
 reports/
 __pycache__/
 *.avi
+recordings/
 *.aedat4
