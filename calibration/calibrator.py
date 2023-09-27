@@ -54,9 +54,12 @@ def allow_manual_setup(args):
     while(cam_location_in_progress):
         # If the process exceeds the specified duration, terminate it
         timeout_seconds = 2  # Adjust the timeout duration as needed
-        user_input = get_input_with_timeout("\rHappy?", timeout_seconds)
-        if user_input is not None:
-            print("Super Happy")
+        if args.is_live: 
+            user_input = get_input_with_timeout("\rHappy?", timeout_seconds)
+            if user_input is not None:
+                print("Super Happy")
+                cam_location_in_progress = False
+        else:
             cam_location_in_progress = False
     try:
         process.wait(timeout=2)
@@ -96,7 +99,7 @@ def parse_args():
     parser.add_argument('-di', '--device-id', type= int, help="Device Id", default=2)
     parser.add_argument('-cd', '--duration', type= int, help="Nb of streamed seconds", default=3)
     parser.add_argument('-fn', '--filename', type=str, help="Recording file name", default="")
-
+    
     return parser.parse_args()
 
 def stream_warped_data(args):
@@ -108,6 +111,10 @@ if __name__ == '__main__':
 
     args = parse_args()
 
+    if args.filename == "":
+        args.is_live = True
+    else:
+        args.is_live = False
     os.system("rm cam_lut_homography.csv")
     make_sure_dvs_ready()
     allow_manual_setup(args)
