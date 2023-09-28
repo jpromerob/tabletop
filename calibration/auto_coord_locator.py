@@ -15,10 +15,10 @@ import numpy as np
 from scipy.signal import convolve2d
 import paramiko
 import socket
+import matplotlib.pyplot as plt
 
+import pdb
 
-NATIVE_RES_X = 640
-NATIVE_RES_Y = 480
 
 def send_dimensions():
     # Define the connection parameters
@@ -54,8 +54,8 @@ def send_dimensions():
 def find_clusters(compressed_array, radius):
     margin = 2*radius
     cluster_list = []
-    for x in range(NATIVE_RES_X-margin):
-        for y in range(NATIVE_RES_X-margin):
+    for x in range(args.res_x-margin):
+        for y in range(args.res_x-margin):
             cluster = compressed_array[x:x+margin, y:y+margin]
             if np.sum(cluster) >= 4:            
                 cluster_list.append((x+radius, y+radius))
@@ -66,12 +66,17 @@ def find_clusters(compressed_array, radius):
 
 def find_marker_coordinates(cluster_list, radius):
 
+
+
     margin = 2 *radius
     last_x = -1
     last_y = -1
     sum_x = 0
     sum_y = 0
     marker_list = []
+
+    pdb.set_trace()
+
     for x, y in cluster_list:
         # print(f"x={x}, y={y}")
         if abs(last_x-x) + abs(last_y-y) > math.sqrt((2*margin)**2):
@@ -91,7 +96,7 @@ def find_marker_coordinates(cluster_list, radius):
 
     
     max_sum = 0
-    min_sum = NATIVE_RES_X+NATIVE_RES_Y
+    min_sum = args.res_x+args.res_y
     avg_x = 0
     for index, point in enumerate(marker_list):
         x, y = point
@@ -148,18 +153,20 @@ def get_new_coord(x, y, h, dim, marker_list, radius):
     # Ignore pixels where LEDs are
     for ml_x, ml_y in marker_list:
         if math.sqrt((x-ml_x)**2+(y-ml_y)**2) <= radius :
-            idx_x = -1
-            idx_y = -1     
+            if int(math.sqrt((x-ml_x)**2+(y-ml_y)**2)) != 0:
+                idx_x = -1
+                idx_y = -1     
+
 
     return idx_x, idx_y
 
-def modify_lut(homgra, dim, marker_list, radius):
+def modify_lut(homgra, dim, marker_list, radius, args):
     
     h = homgra #np.loadtxt('homgra.txt')
     
 
     # Replace 'your_file.csv' with the path to your CSV file
-    csv_file_path = 'cam_lut_undistortion.csv'
+    csv_file_path = f'cam_lut_undistortion_{args.camera_type}.csv'
 
     # Open the CSV file in read mode
     with open(csv_file_path, newline='') as csvfile:
@@ -199,7 +206,7 @@ def modify_lut(homgra, dim, marker_list, radius):
         new_data_list.append(element)
 
 
-    csv_file_path = 'cam_lut_homography.csv'
+    csv_file_path = f'cam_lut_homography_{args.camera_type}.csv'
 
     # Open the CSV file in write mode
     with open(csv_file_path, 'w', newline='') as csv_file:
@@ -249,6 +256,27 @@ def add_markers(im_acc, radius, points, color):
     
     return im_acc 
 
+def new_find_marker_coordinates(res_x, res_y, filtered_array):
+
+
+    limits =[]
+    limits.append((0, int(res_x/2), int(res_y/2), res_y))
+    limits.append((0, int(res_x/2), 0, int(res_y/2)))
+    limits.append((int(res_x/2), res_x, 0, int(res_y/2)))
+    limits.append((int(res_x/2), res_x, int(res_y/2), res_y))
+
+    marker_list = []
+    for limit in limits:
+        (ox, fx, oy, fy) = limit
+        marker_x = np.argmax(np.sum(filtered_array[ox:fx, oy:fy],1))+ox
+        marker_y = np.argmax(np.sum(filtered_array[ox:fx, oy:fy],0))+oy
+        marker_list.append([marker_x, marker_y])
+
+
+    print(marker_list)
+    return marker_list
+
+
 
 def parse_args():
 
@@ -260,6 +288,7 @@ def parse_args():
     parser.add_argument('-e', '--events', type= float, help="Number of events", default=50000)
     parser.add_argument('-vs', '--vis-scale', type=int, help="Visualization scale", default=1)
     parser.add_argument('-hs', '--hom-scale', type=float, help="Homography scale", default=0.8)
+    parser.add_argument('-ct', '--camera-type', type=str, help="inivation/prophesee", default="prophesee")
 
     return parser.parse_args()
 
@@ -267,19 +296,26 @@ if __name__ == '__main__':
 
 
     args = parse_args()
-    dim = get_dimensions(args.hom_scale)
+    if args.camera_type == "prophesee":
+        args.res_x = 1280
+        args.res_y = 720
+    elif args.camera_type == "inivation":
+        args.res_x = 640
+        args.res_y = 480
+
+    dim = get_dimensions(args.res_x, args.res_y, args.hom_scale)
     dim.save_to_file('../common/homdim.pkl')
 
     # Step 1: Record the start time
     start_time = time.time()
 
-    os.system("rm cam_lut_homography.csv")
+    # os.system("rm cam_lut_homography.csv")
     # os.system("rm *.png")
     cv2.namedWindow('TableTopTracker')
 
     # Stream events from UDP port 3333 (default)
-    frame = np.zeros((NATIVE_RES_X,NATIVE_RES_Y,3))
-    accumulator = np.zeros((NATIVE_RES_X,NATIVE_RES_Y,3))
+    frame = np.zeros((args.res_x,args.res_y,3))
+    accumulator = np.zeros((args.res_x,args.res_y,3))
 
 
     print("Waiting for Calibration signal")
@@ -290,11 +326,11 @@ if __name__ == '__main__':
             print("Starting new calibration")
 
             frame_counter = 0
-            with aestream.UDPInput((NATIVE_RES_X, NATIVE_RES_Y), device = 'cpu', port=args.port) as stream1:
+            with aestream.UDPInput((args.res_x, args.res_y), device = 'cpu', port=args.port) as stream1:
                         
                 while True:
 
-                    frame[0:NATIVE_RES_X,0:NATIVE_RES_Y,1] =  stream1.read().numpy() # Provides a (640, 480) tensor
+                    frame[0:args.res_x,0:args.res_y,1] =  stream1.read().numpy() # Provides a (640, 480) tensor
                     
                     if frame_counter == 0:
                         start_time = time.time()
@@ -305,7 +341,7 @@ if __name__ == '__main__':
 
                     if total_sum < args.events:
                         accumulator += frame
-                        image = cv2.resize(accumulator.transpose(1,0,2), (math.ceil(NATIVE_RES_X*args.vis_scale),math.ceil(NATIVE_RES_Y*args.vis_scale)), interpolation = cv2.INTER_AREA)
+                        image = cv2.resize(accumulator.transpose(1,0,2), (math.ceil(args.res_x*args.vis_scale),math.ceil(args.res_y*args.vis_scale)), interpolation = cv2.INTER_AREA)
                         # cv2.imshow('TableTopTracker', image)
                         # cv2.waitKey(1)
                     else:
@@ -316,12 +352,26 @@ if __name__ == '__main__':
 
             print("All necessary events collected :)")
 
+
             radius = args.radius
             cluster_list = find_clusters(compressed_array, radius)
-            marker_list = find_marker_coordinates(cluster_list, radius)
+
+            filtered_array = np.zeros((args.res_x, args.res_y))
+            for x, y in cluster_list:
+                filtered_array[x,y] = planar_acc[x,y]
+
+            marker_list = new_find_marker_coordinates(args.res_x, args.res_y, filtered_array)
+
+
+            # plt.imshow(np.transpose(filtered_array), cmap='viridis')  # You can choose a colormap (e.g., 'viridis')
+            # plt.colorbar()  # Add a colorbar to the plot (optional)
+            # plt.title("2D Array Plot")  # Add a title (optional)
+            # plt.xlabel("X-axis")  # Add X-axis label (optional)
+            # plt.ylabel("Y-axis")  # Add Y-axis label (optional)
+            # plt.show()
 
             # Save Accumulated Image with Markers
-            im_acc = cv2.resize(10*accumulator.transpose(1,0,2), (math.ceil(NATIVE_RES_X*args.vis_scale),math.ceil(NATIVE_RES_Y*args.vis_scale)), interpolation = cv2.INTER_AREA)
+            im_acc = cv2.resize(10*accumulator.transpose(1,0,2), (math.ceil(args.res_x*args.vis_scale),math.ceil(args.res_y*args.vis_scale)), interpolation = cv2.INTER_AREA)
             for x, y in marker_list:
                 image[y-radius:y+radius, x-radius:x+radius, :] = [0,0,255]
             cv2.imwrite('Accumulated.png', im_acc)
@@ -332,6 +382,7 @@ if __name__ == '__main__':
 
             pts_src = np.array(marker_list)
             pts_dst = get_dst_pts(dim)
+
 
             im_mkd = add_markers(im_acc, radius, pts_src, [0,0,255])
             cv2.imwrite("Marked.png", im_mkd)
@@ -352,7 +403,7 @@ if __name__ == '__main__':
 
             cv2.destroyAllWindows()
 
-            modify_lut(homgra, dim, marker_list, radius)
+            modify_lut(homgra, dim, marker_list, radius, args)
 
             
             # Record the end time
