@@ -48,16 +48,16 @@ def build_cmd(args, lut, mode):
     else:
         cmd_in = f"input file {args.filename}"
     cmd_lut = f"resolution {args.res_x} {args.res_y} undistortion {lut}.csv"
-    cmd = f"{cmd_base} {cmd_out} {cmd_in} {cmd_lut}"
+    cmd = f"{cmd_base} {cmd_in} {cmd_out} {cmd_lut}"
 
-    print(cmd)
-    pdb.set_trace()
+    print(f"\n\n {cmd} \n\n")
+    # pdb.set_trace()
     return cmd
 
 
 def allow_manual_setup(args):
 
-    command = build_cmd(args, "cam_lut_undistortion", "streaming")
+    command = build_cmd(args, f"cam_lut_undistortion_{args.camera_type}", "streaming")
     process = subprocess.Popen(command, shell=True)
     cam_location_in_progress = True
     time.sleep(1)
@@ -75,24 +75,24 @@ def allow_manual_setup(args):
         process.wait(timeout=2)
     except subprocess.TimeoutExpired:
         process.terminate()
-    os.system("pkill -f cam_lut_undistortion.csv")
+    os.system(f"pkill -f cam_lut_undistortion_{args.camera_type}.csv")
 
 def enable_calibration(args):
 
-    command = build_cmd(args, "cam_lut_undistortion", "calibration")
+    command = build_cmd(args, f"cam_lut_undistortion_{args.camera_type}", "calibration")
     process = subprocess.Popen(command, shell=True)
     send_signal(args.calibrator_ip, args.port_intercom)
     try:
         process.wait(timeout=args.duration)
     except subprocess.TimeoutExpired:
         process.terminate()
-    os.system("pkill -f cam_lut_undistortion.csv")
+    os.system(f"pkill -f cam_lut_undistortion_{args.camera_type}.csv")
     time.sleep(3*args.duration)
 
 
-def make_sure_dvs_ready():
-    os.system("pkill -f cam_lut_homography.csv")
-    os.system("pkill -f cam_lut_undistortion.csv")
+def make_sure_dvs_ready(args):
+    os.system(f"pkill -f cam_lut_undistortion_{args.camera_type}.csv")
+    os.system(f"pkill -f cam_lut_homography_{args.camera_type}.csv")
 
 
 
@@ -104,19 +104,15 @@ def parse_args():
     parser.add_argument('-ps', '--port-streaming', type= int, help="Port for live streaming", default=5050)
     parser.add_argument('-pc', '--port-calibration', type= int, help="Port for calibration", default=5151)
     parser.add_argument('-pi', '--port-intercom', type= int, help="Port for intercom", default=5252)
-    parser.add_argument('-db', '--device-bus', type= int, help="Device Bus", default=2)
-    parser.add_argument('-di', '--device-id', type= int, help="Device Id", default=2)
-    parser.add_argument('-cd', '--duration', type= int, help="Nb of streamed seconds", default=3)
+    parser.add_argument('-cd', '--duration', type= int, help="Nb of streamed seconds", default=6)
     parser.add_argument('-fn', '--filename', type=str, help="Recording file name", default="")
-    parser.add_argument('-rx', '--res-x', type=int, help="Image length", default=640)
-    parser.add_argument('-ry', '--res-y', type=int, help="Image width", default=480)
-    parser.add_argument('-ct', '--camera-type', type=str, help="inivation/prophesee", default="inivation")
+    parser.add_argument('-ct', '--camera-type', type=str, help="inivation/prophesee", default="prophesee")
 
     
     return parser.parse_args()
 
 def stream_warped_data(args):
-    os.system(build_cmd(args, "cam_lut_homography", "streaming"))
+    os.system(build_cmd(args, f"cam_lut_homography_{args.camera_type}", "streaming"))
 
 def print_data(args):
     print("Starting Calibration using:")
@@ -127,14 +123,23 @@ def print_data(args):
 if __name__ == '__main__':
 
     args = parse_args()
+    if args.camera_type == "prophesee":
+        args.res_x = 1280
+        args.res_y = 720
+    elif args.camera_type == "inivation":
+        args.res_x = 640
+        args.res_y = 480
+    else:
+        "Wrong Camera Type"
+        quit()
     print_data(args)
 
     if args.filename == "":
         args.is_live = True
     else:
         args.is_live = False
-    os.system("rm cam_lut_homography.csv")
-    make_sure_dvs_ready()
+        
+    make_sure_dvs_ready(args)
     allow_manual_setup(args)
     enable_calibration(args)
     stream_warped_data(args)

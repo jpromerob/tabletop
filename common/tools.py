@@ -31,9 +31,9 @@ class Dimensions:
             return pickle.load(file)
 
 
-def get_dimensions(hom_scale):
+def get_dimensions(nat_res_x, nat_res_y, hom_scale):
 
-    dim = Dimensions(640, 480, 288, 174, 76, 56, 90, 10, 30, hom_scale)
+    dim = Dimensions(nat_res_x, nat_res_y, 288, 174, 76, 56, 90, 10, 30, hom_scale)
     return dim
 
 

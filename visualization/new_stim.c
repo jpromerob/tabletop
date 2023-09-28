@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 
 #define IP "172.16.222.199"
-#define PORT 3330
+#define PORT 3331
 #define NUM_EVENTS 1 // Number of events to send
 
 void generateEvents(int cx, int cy, int r) {
