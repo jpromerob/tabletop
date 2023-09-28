@@ -33,6 +33,8 @@ def parse_args():
     parser.add_argument('-m', '--mode', type= str, help="Mode", default="both")
     parser.add_argument('-at', '--acc-time', type= int, help="Accumulation Time", default=1)
     parser.add_argument('-d', '--duration', type= int, help="Duration", default=1)
+    parser.add_argument('-l', '--length', type=int, help="Image length", default=640)
+    parser.add_argument('-w', '--width', type=int, help="Image width", default=480)
 
     return parser.parse_args()
 
@@ -40,6 +42,8 @@ if __name__ == '__main__':
 
 
     args = parse_args()
+    res_x = args.length
+    res_y = args.width
         
     # Load the Dimensions object from the file
     dim = Dimensions.load_from_file('../common/homdim.pkl')
@@ -49,19 +53,19 @@ if __name__ == '__main__':
     print(f"Max # frames: {max_nb_frames}")
     # pdb.set_trace()
 
-    original_img = torch.zeros(1, 1, 640, 480)
-    convolved_img = torch.zeros(1, 1, 640, 480)
+    original_img = torch.zeros(1, 1, res_x, res_y)
+    convolved_img = torch.zeros(1, 1, res_x, res_y)
 
-    orig_out = np.zeros((max_nb_frames,640, 480))
-    conv_out = np.zeros((max_nb_frames,640, 480))
+    orig_out = np.zeros((max_nb_frames,res_x, res_y))
+    conv_out = np.zeros((max_nb_frames,res_x, res_y))
 
 
     frame_counter = 0
     read_counter = 0
     beginning = time.perf_counter()
     elapsed_time = 0
-    with aestream.UDPInput((640, 480), device = 'cpu', port=args.port_0) as stream_0:
-        with aestream.UDPInput((640, 480), device = 'cpu', port=args.port_1) as stream_1:
+    with aestream.UDPInput((res_x, res_y), device = 'cpu', port=args.port_0) as stream_0:
+        with aestream.UDPInput((res_x, res_y), device = 'cpu', port=args.port_1) as stream_1:
             
             start_time = time.perf_counter()
             last_time = time.perf_counter()
@@ -79,8 +83,8 @@ if __name__ == '__main__':
                         # print(elapsed_time[-1])
                         orig_out[frame_counter,:,:] = (original_img * 255.0).clamp(0, 255).to(torch.uint8).squeeze().numpy()
                         conv_out[frame_counter,:,:] = (convolved_img * 255.0).clamp(0, 255).to(torch.uint8).squeeze().numpy()
-                        original_img = torch.zeros(1, 1, 640, 480)
-                        convolved_img = torch.zeros(1, 1, 640, 480)
+                        original_img = torch.zeros(1, 1, res_x, res_y)
+                        convolved_img = torch.zeros(1, 1, res_x, res_y)
                         frame_counter += 1
                         start_time = now
                         
@@ -118,7 +122,7 @@ if __name__ == '__main__':
     kernel = np.load("../common/kernel.npy")
     k_sz = len(kernel)
     # pdb.set_trace()
-    black = np.zeros((640,480,3), dtype=np.uint8)
+    black = np.zeros((res_x,res_y,3), dtype=np.uint8)
     
     old_frame = black
     new_frame = black
@@ -137,7 +141,7 @@ if __name__ == '__main__':
 
     # Define the codec and create VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter(output_file, fourcc, frame_rate, (640, 480))
+    out = cv2.VideoWriter(output_file, fourcc, frame_rate, (res_x, res_y))
 
     orig_out = orig_out.transpose((1, 2, 0))
     conv_out = conv_out.transpose((1, 2, 0))
@@ -154,7 +158,7 @@ if __name__ == '__main__':
         if flag_orig:
             new_frame[:,:,1] = orig_out[:, :, i]
         if flag_conv:
-            new_frame[int(k_sz/2):640-int(k_sz/2),int(k_sz/2):480-int(k_sz/2),0] = conv_out[0:640-k_sz+1,0:480-k_sz+1, i]
+            new_frame[int(k_sz/2):res_x-int(k_sz/2),int(k_sz/2):res_y-int(k_sz/2),0] = conv_out[0:res_x-k_sz+1,0:res_y-k_sz+1, i]
                     
         # pdb.set_trace()
         if np.sum(new_frame)==0:

@@ -5,6 +5,7 @@ import os
 import sys
 import argparse
 import select
+import pdb
 
 def get_input_with_timeout(prompt, timeout_seconds):
     print(prompt, end=' ', flush=True)
@@ -31,23 +32,32 @@ def send_signal(receiver_ip, receiver_port):
     # Close the socket
     sock.close()
 
-def build_cmd(ip_address, port, filename, dvx, lut):
+def build_cmd(args, lut, mode):
+
+    if mode == "calibration":
+        port = args.port_calibration
+    elif mode == "streaming":
+        port = args.port_streaming
+
     cmd_base = f"/opt/aestream/build/src/aestream"
-    cmd_out = f"output udp {ip_address} {port}"
+    cmd_out = f"output udp {args.calibrator_ip} {port}"
     # output udp 172.16.223.2 3333 172.16.222.199 3330
-    if filename == "":
-        cmd_in = f"input inivation {dvx[0]} {dvx[1]} dvx"
+    if args.filename == "":
+        cmd_in = f"input {args.camera_type}"
+
     else:
-        cmd_in = f"input file {filename}"
-    cmd_lut = f"resolution 640 480 undistortion {lut}.csv"
+        cmd_in = f"input file {args.filename}"
+    cmd_lut = f"resolution {args.res_x} {args.res_y} undistortion {lut}.csv"
     cmd = f"{cmd_base} {cmd_out} {cmd_in} {cmd_lut}"
+
+    print(cmd)
+    pdb.set_trace()
     return cmd
 
 
 def allow_manual_setup(args):
 
-    dvx = [args.device_bus, args.device_id]
-    command = build_cmd(args.calibrator_ip, args.port_streaming, args.filename, dvx, "cam_lut_undistortion")
+    command = build_cmd(args, "cam_lut_undistortion", "streaming")
     process = subprocess.Popen(command, shell=True)
     cam_location_in_progress = True
     time.sleep(1)
@@ -69,8 +79,7 @@ def allow_manual_setup(args):
 
 def enable_calibration(args):
 
-    dvx = [args.device_bus, args.device_id]
-    command = build_cmd(args.calibrator_ip, args.port_calibration, args.filename, dvx, "cam_lut_undistortion")
+    command = build_cmd(args, "cam_lut_undistortion", "calibration")
     process = subprocess.Popen(command, shell=True)
     send_signal(args.calibrator_ip, args.port_intercom)
     try:
@@ -99,17 +108,26 @@ def parse_args():
     parser.add_argument('-di', '--device-id', type= int, help="Device Id", default=2)
     parser.add_argument('-cd', '--duration', type= int, help="Nb of streamed seconds", default=3)
     parser.add_argument('-fn', '--filename', type=str, help="Recording file name", default="")
+    parser.add_argument('-rx', '--res-x', type=int, help="Image length", default=640)
+    parser.add_argument('-ry', '--res-y', type=int, help="Image width", default=480)
+    parser.add_argument('-ct', '--camera-type', type=str, help="inivation/prophesee", default="inivation")
+
     
     return parser.parse_args()
 
 def stream_warped_data(args):
-    dvx = [args.device_bus, args.device_id]
-    os.system(build_cmd(args.calibrator_ip, args.port_streaming, args.filename, dvx, "cam_lut_homography"))
+    os.system(build_cmd(args, "cam_lut_homography", "streaming"))
 
+def print_data(args):
+    print("Starting Calibration using:")
+    print(f" - {args.camera_type} camera res: {args.res_x}x{args.res_y} px")
+    print(f" - Calibrator IP: {args.calibrator_ip}")
+    print(f"   - Ports: calibration: {args.port_calibration} | streaming: {args.port_streaming}")
 
 if __name__ == '__main__':
 
     args = parse_args()
+    print_data(args)
 
     if args.filename == "":
         args.is_live = True
