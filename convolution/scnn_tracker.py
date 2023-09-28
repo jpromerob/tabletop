@@ -75,10 +75,10 @@ def make_whole_kernel(k_sz, hs):
 
     pos_radi = np.array([20,9])*hs
 
-    # w_scaler = 0.120
-    # thickness = 1
-    w_scaler = 0.080 # Goodsies
+    w_scaler = 0.200 # Goodsies with tau_m = 1.0
     thickness = 2 # Goodsies
+    w_scaler = 0.080 # Goodsies with tau_m = 10.0 ???
+    # thickness = 2 # Goodsies
     pos_w = 1
     neg_w = -pos_w * 0.20
     gen_w = neg_w * 0.50
@@ -191,7 +191,7 @@ if __name__ == '__main__':
         [POP_LABEL], SPIF_IP, SPIF_PORT)
     conn.add_receive_callback(POP_LABEL, recv_nid)
 
-    cell_params = {'tau_m': 10.0,
+    cell_params = {'tau_m': 1.0,
                 'tau_syn_E': 1.0,
                 'tau_syn_I': 1.0,
                 'v_rest': -65.0,
