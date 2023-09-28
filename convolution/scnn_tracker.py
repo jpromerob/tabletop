@@ -75,14 +75,16 @@ def make_whole_kernel(k_sz, hs):
 
     pos_radi = np.array([20,9])*hs
 
-    w_scaler = 0.012
+    # w_scaler = 0.120
+    # thickness = 1
+    w_scaler = 0.080 # Goodsies
+    thickness = 2 # Goodsies
     pos_w = 1
     neg_w = -pos_w * 0.20
     gen_w = neg_w * 0.50
 
     kernel = gen_w*w_scaler*np.ones((k_sz, k_sz), dtype=np.float32)
 
-    thickness = 2
     for r in pos_radi:
         for i in np.arange(r-thickness+1, r+1):
             make_kernel_circle(i, k_sz, pos_w*w_scaler, kernel) # 38px
