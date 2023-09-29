@@ -64,6 +64,8 @@ if __name__ == '__main__':
     read_counter = 0
     beginning = time.perf_counter()
     elapsed_time = 0
+    sum_et = 0
+
     with aestream.UDPInput((res_x, res_y), device = 'cpu', port=args.port) as stream_0:
             
         start_time = time.perf_counter()
@@ -76,6 +78,8 @@ if __name__ == '__main__':
                 elapsed_time = now - start_time
                 if elapsed_time > args.acc_time/1000:
                     original_img[0,0,:,:] += stream_0.read()
+                    sum_et += (time.perf_counter() - now)
+                    read_counter +=1 
                 
 
                     # print(elapsed_time[-1])
@@ -84,7 +88,6 @@ if __name__ == '__main__':
                     frame_counter += 1
                     start_time = now
                     
-                read_counter +=1 
                 last_time = now
             except:
                 pdb.set_trace()
@@ -97,7 +100,7 @@ if __name__ == '__main__':
     print(f"Whole recording lasted: {whole_duration:.3f} seconds")
 
     print(f"{np.sum(orig_out)} events")
-    mean = 1e6*elapsed_time/read_counter
+    mean = 1e6*sum_et/read_counter
     print(f"Average reading time: {mean:.6f} [us]")
 
 
@@ -105,7 +108,6 @@ if __name__ == '__main__':
 
     kernel = np.load("../common/kernel.npy")
     k_sz = len(kernel)
-    # pdb.set_trace()
     black = np.zeros((res_x,res_y,3), dtype=np.uint8)
     
     old_frame = black
@@ -117,7 +119,6 @@ if __name__ == '__main__':
     current_datetime = datetime.now()
     output_file = f"{current_datetime.year}_{current_datetime.month:02d}_{current_datetime.day:02d}_{current_datetime.hour:02d}_{current_datetime.minute:02d}_{args.acc_time}ms.avi"
     print(f"File name: {output_file}")
-    # pdb.set_trace()
 
     # Define video properties
     frame_rate = 25  # Frames per second (adjust as needed)
@@ -133,15 +134,6 @@ if __name__ == '__main__':
     # Iterate through the frames and write to the video
     for i in range(max_nb_frames):
         new_frame[:,:,1] = orig_out[:, :, i]  
-        
-        # plt.imshow(new_frame[:, :,1])  # You can choose a colormap (e.g., 'viridis')
-        # plt.title("Transposed 2D Array Plot")  # Add a title (optional)
-        # plt.xlabel("Y-axis")  # Add Y-axis label (optional)
-        # plt.ylabel("X-axis")  # Add X-axis label (optional)        
-        # plt.savefig(f"images_rec/image_{i}.png")
-        # plt.clf()
-
-        # pdb.set_trace()
 
         # Write the frame to the video
         for _ in range(frame_duration_ms // (1000 // frame_rate)):

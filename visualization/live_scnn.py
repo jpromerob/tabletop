@@ -121,6 +121,8 @@ if __name__ == '__main__':
                 # Print the received coordinates
                 new_robot_x, new_robot_y = from_px_to_cm(dim, avg_row_idx, avg_col_idx)
                 message = f"{new_robot_x},{new_robot_y}"
+
+                # Send new coordinates only if they are sufficiently different
                 if math.sqrt((new_robot_x-old_robot_x)**2+(new_robot_y-old_robot_y)**2)>1:
                     sock.sendto(message.encode(), (receiver_ip, receiver_port))
                     old_robot_x = new_robot_x

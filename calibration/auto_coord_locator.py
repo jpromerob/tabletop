@@ -142,20 +142,30 @@ def get_dst_pts(dim):
 
     return pts_dst
 
-def get_new_coord(x, y, h, dim, marker_list, radius):
+def warp_coord(x, y, h):
 
     idx_x = int((x*h[0][0]+y*h[0][1]+h[0][2])/(x*h[2][0]+y*h[2][1]+h[2][2]))
     idx_y = int((x*h[1][0]+y*h[1][1]+h[1][2])/(x*h[2][0]+y*h[2][1]+h[2][2]))
+
+    return idx_x, idx_y
+
+def get_new_coord(x, y, h, dim, marker_list, radius):
+
+    idx_x, idx_y = warp_coord(x, y, h)
+
     if not(idx_x >= 0 and idx_x < dim.d2ex+dim.il+dim.d2ex and idx_y >= 0 and idx_y < dim.d2ey+dim.iw+dim.d2ey):
         idx_x = -1
         idx_y = -1        
 
-    # Ignore pixels where LEDs are
+    #Ignore pixels where LEDs are
     for ml_x, ml_y in marker_list:
-        if math.sqrt((x-ml_x)**2+(y-ml_y)**2) <= radius :
-            if int(math.sqrt((x-ml_x)**2+(y-ml_y)**2)) != 0:
+        if x == ml_x and y == ml_y:
+            pass
+        else:
+            if math.sqrt((x-ml_x)**2+(y-ml_y)**2) <= radius :
                 idx_x = -1
                 idx_y = -1     
+ 
 
 
     return idx_x, idx_y
