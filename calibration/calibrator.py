@@ -141,5 +141,6 @@ if __name__ == '__main__':
         
     make_sure_dvs_ready(args)
     allow_manual_setup(args)
+    time.sleep(10)
     enable_calibration(args)
     stream_warped_data(args)
