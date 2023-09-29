@@ -20,6 +20,22 @@ JPRB 25/09/2023 14:15: I have the impression that:
  - this is the best SCNN so far ... 
 '''
 
+w_scaler = 0.200 # Goodsies with tau_m = 1.0
+thickness = 2 # Goodsies
+# w_scaler = 0.080 # Goodsies with tau_m = 10.0 ???
+# thickness = 2 # Goodsies
+
+cell_params = {'tau_m': 2.0,
+            'tau_syn_E': 1.0,
+            'tau_syn_I': 1.0,
+            'v_rest': -65.0,
+            'v_reset': -65.0,
+            'v_thresh': -60.0,
+            'tau_refrac': 0.0, # 0.1 originally
+            'cm': 1,
+            'i_offset': 0.0
+            }
+
 def input_with_timeout(prompt, timeout):
     print(prompt, end='', flush=True)
     rlist, _, _ = select.select([sys.stdin], [], [], timeout)
@@ -75,10 +91,6 @@ def make_whole_kernel(k_sz, hs):
 
     pos_radi = np.array([20,9])*hs
 
-    w_scaler = 0.200 # Goodsies with tau_m = 1.0
-    thickness = 2 # Goodsies
-    w_scaler = 0.080 # Goodsies with tau_m = 10.0 ???
-    # thickness = 2 # Goodsies
     pos_w = 1
     neg_w = -pos_w * 0.20
     gen_w = neg_w * 0.50
@@ -191,16 +203,6 @@ if __name__ == '__main__':
         [POP_LABEL], SPIF_IP, SPIF_PORT)
     conn.add_receive_callback(POP_LABEL, recv_nid)
 
-    cell_params = {'tau_m': 1.0,
-                'tau_syn_E': 1.0,
-                'tau_syn_I': 1.0,
-                'v_rest': -65.0,
-                'v_reset': -65.0,
-                'v_thresh': -60.0,
-                'tau_refrac': 0.0, # 0.1 originally
-                'cm': 1,
-                'i_offset': 0.0
-                }
 
     p.setup(timestep=1.0, n_boards_required=24)
 
