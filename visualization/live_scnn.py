@@ -15,8 +15,11 @@ import socket
 import random
 
 # IP and port of the receiver (Computer B)
-receiver_ip = "172.16.222.30"
-receiver_port = 5151
+controller_ip = "172.16.222.30"
+controller_port = 5151
+plotter_ip = controller_ip
+# plotter_ip = "172.16.222.199"
+plotter_port = 4000
 
 
 def from_px_to_cm(dim, px_x, px_y):
@@ -75,16 +78,16 @@ if __name__ == '__main__':
 
     
 
-    avg_row_idx = int(dim.fl/2)
-    avg_col_idx = int(dim.fw/2)
-    new_robot_x, new_robot_y = from_px_to_cm(dim, avg_row_idx, avg_col_idx)
-    old_robot_x = new_robot_x
-    old_robot_y = new_robot_y
+    new_avg_row_idx = int(dim.fl/2)
+    new_avg_col_idx = int(dim.fw/2)
+    old_avg_row_idx = new_avg_row_idx
+    old_avg_col_idx = new_avg_col_idx
+    new_robot_x, new_robot_y = from_px_to_cm(dim, new_avg_row_idx, new_avg_col_idx)
     kernel = np.load("../common/kernel.npy")
     k_sz = len(kernel)
     print(f"Kernel {k_sz} px")
-    x_k = int((dim.fl-k_sz)/2)+1
-    y_k = int((dim.fw-k_sz)/2)+1
+    x_k = int(dim.fl/2) - int(k_sz/2)
+    y_k = int(dim.fw/2) - int(k_sz/2)
     with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_0) as original:
         with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_1) as convolved:
                     
@@ -102,31 +105,31 @@ if __name__ == '__main__':
                 frame[:,:,1] = orig_out
                 frame[int(k_sz/2):dim.fl-int(k_sz/2),int(k_sz/2):dim.fw-int(k_sz/2),0] = conv_out[0:dim.fl-k_sz+1,0:dim.fw-k_sz+1]
                 
-                row_indices, column_indices = np.where(conv_out > 0.1)
+                row_indices, column_indices = np.where(conv_out > 0.05)
                 if np.sum(conv_out) > 5:
                     
                     if len(row_indices)>0 and len(column_indices)>0:
-                        avg_row_idx = int(np.mean(row_indices))+int(k_sz/2)     
-                        avg_col_idx = int(np.mean(column_indices))+int(k_sz/2)
+                        old_avg_row_idx = new_avg_row_idx
+                        old_avg_col_idx = new_avg_col_idx
+                        new_avg_row_idx = int(np.mean(row_indices))+int(k_sz/2)     
+                        new_avg_col_idx = int(np.mean(column_indices))+int(k_sz/2)
                 
                 
                 image = cv2.resize(frame.transpose(1,0,2), (math.ceil(dim.fl*args.vis_scale),math.ceil(dim.fw*args.vis_scale)), interpolation = cv2.INTER_AREA)
                
 
-                # Draw Tracker
-                cv2.circle(image, (avg_row_idx*args.vis_scale, avg_col_idx*args.vis_scale), 5*args.vis_scale, color=(255,0,255), thickness=-2)
-
-                # Send Coordinates
-
-                # Print the received coordinates
-                new_robot_x, new_robot_y = from_px_to_cm(dim, avg_row_idx, avg_col_idx)
-                message = f"{new_robot_x},{new_robot_y}"
 
                 # Send new coordinates only if they are sufficiently different
-                if math.sqrt((new_robot_x-old_robot_x)**2+(new_robot_y-old_robot_y)**2)>1:
-                    sock.sendto(message.encode(), (receiver_ip, receiver_port))
-                    old_robot_x = new_robot_x
-                    old_robot_y = new_robot_y
+                if math.sqrt((new_avg_row_idx-old_avg_row_idx)**2+(new_avg_col_idx-old_avg_col_idx)**2)>=1:
+
+                    # Estimate coordinates in robot coordinate frame
+                    new_robot_x, new_robot_y = from_px_to_cm(dim, new_avg_row_idx, new_avg_col_idx)
+                    message = f"{new_robot_x},{new_robot_y}"
+                    sock.sendto(message.encode(), (controller_ip, controller_port))
+                    sock.sendto(message.encode(), (plotter_ip, plotter_port))
+
+                # Draw Tracker
+                cv2.circle(image, (new_avg_row_idx*args.vis_scale, new_avg_col_idx*args.vis_scale), 3*args.vis_scale, color=(255,0,255), thickness=-2)
 
                 # Define the four corners of the field
                 corners = np.array(field, np.int32)
@@ -138,9 +141,8 @@ if __name__ == '__main__':
 
                 for cx, cy in circles:
                     cv2.circle(image, (cx, cy), radius, color=red, thickness=1)
-                cv2.line(image, line[0], line[1], color=red, thickness=1)
+                # cv2.line(image, line[0], line[1], color=red, thickness=1)
                 
-
                 cv2.imshow('Airhocket Display', image)
                 cv2.waitKey(1)
 
