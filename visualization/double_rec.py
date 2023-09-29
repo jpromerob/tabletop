@@ -69,6 +69,7 @@ if __name__ == '__main__':
     read_counter = 0
     beginning = time.perf_counter()
     elapsed_time = 0
+    sum_et = 0
     with aestream.UDPInput((res_x, res_y), device = 'cpu', port=args.port_0) as stream_0:
         with aestream.UDPInput((res_x, res_y), device = 'cpu', port=args.port_1) as stream_1:
             
@@ -84,6 +85,8 @@ if __name__ == '__main__':
                     if elapsed_time > args.acc_time/1000:
                         original_img[0,0,:,:] += stream_0.read()
                         convolved_img[0,0,:,:] += stream_1.read()
+                        sum_et += (time.perf_counter() - now)
+                        read_counter +=1 
                     
                         # print(elapsed_time[-1])
                         orig_out[frame_counter,:,:] = (original_img * 255.0).clamp(0, 255).to(torch.uint8).squeeze().numpy()
@@ -93,7 +96,6 @@ if __name__ == '__main__':
                         frame_counter += 1
                         start_time = time.perf_counter()
                         
-                    read_counter +=1 
                     last_time = now
                 except:
                     pdb.set_trace()
@@ -107,7 +109,7 @@ if __name__ == '__main__':
 
     print(f"{np.sum(orig_out)} events")
     print(f"{np.sum(conv_out)} events")
-    mean = 1e6*elapsed_time/read_counter
+    mean = 1e6*sum_et/read_counter
     print(f"Average reading time: {mean:.6f} [us]")
 
 
