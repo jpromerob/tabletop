@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import paramiko
 import socket
 import argparse
+import math
 import time
 import sys
 import select
@@ -20,12 +21,12 @@ JPRB 25/09/2023 14:15: I have the impression that:
  - this is the best SCNN so far ... 
 '''
 
-w_scaler = 0.200 # Goodsies with tau_m = 1.0
+w_scaler = 0.1 # Goodsies with tau_m = 1.0
 thickness = 2 # Goodsies
 # w_scaler = 0.080 # Goodsies with tau_m = 10.0 ???
 # thickness = 2 # Goodsies
 
-cell_params = {'tau_m': 2.0,
+cell_params = {'tau_m': 3.0/math.log(2),
             'tau_syn_E': 1.0,
             'tau_syn_I': 1.0,
             'v_rest': -65.0,
@@ -92,10 +93,9 @@ def make_whole_kernel(k_sz, hs):
     pos_radi = np.array([20,9])*hs
 
     pos_w = 1
-    neg_w = -pos_w * 0.20
-    gen_w = neg_w * 0.50
+    neg_w = -pos_w * 0.295
 
-    kernel = gen_w*w_scaler*np.ones((k_sz, k_sz), dtype=np.float32)
+    kernel = neg_w*w_scaler*np.ones((k_sz, k_sz), dtype=np.float32)
 
     for r in pos_radi:
         for i in np.arange(r-thickness+1, r+1):
