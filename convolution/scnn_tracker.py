@@ -16,26 +16,6 @@ import select
 sys.path.append('../common')
 from tools import Dimensions
 
-'''
-JPRB 25/09/2023 14:15: I have the impression that:
- - this is the best SCNN so far ... 
-'''
-
-w_scaler = 0.1 # Goodsies with tau_m = 1.0
-thickness = 2 # Goodsies
-# w_scaler = 0.080 # Goodsies with tau_m = 10.0 ???
-# thickness = 2 # Goodsies
-
-cell_params = {'tau_m': 3.0/math.log(2),
-            'tau_syn_E': 1.0,
-            'tau_syn_I': 1.0,
-            'v_rest': -65.0,
-            'v_reset': -65.0,
-            'v_thresh': -60.0,
-            'tau_refrac': 0.0, # 0.1 originally
-            'cm': 1,
-            'i_offset': 0.0
-            }
 
 def input_with_timeout(prompt, timeout):
     print(prompt, end='', flush=True)
@@ -76,43 +56,60 @@ def send_kernel():
 
     print(f"File '{local_file_path}' copied to '{remote_file_path}' on {hostname}")
 
-def make_kernel_circle(r, k_sz,weight, kernel):
-    # pdb.set_trace()
+def make_kernel_circle(r, k_sz, weight, kernel):
+    
     var = int((k_sz+1)/2-1)
     a = np.arange(0, 2 * math.pi, 0.01)
     dx = np.round(r * np.sin(a)).astype("uint32")
     dy = np.round(r * np.cos(a)).astype("uint32")
     kernel[var + dx, var + dy] = weight
 
-def make_whole_kernel(k_sz, hs):
+def make_whole_kernel(k_sz, hs, w_scaler, thickness):
 
+    # Kernel size should be 'odd' (not 'even')
     k_sz = int(k_sz*hs)
     if k_sz%2 == 0:
         k_sz += 1
 
+    # Radius of pattern edges (target)
     pos_radi = np.array([20,9])*hs
 
-    pos_w = 1
-    neg_w = -pos_w * 0.295
+    # pos_w is given by the w_scaler
+    pos_w = w_scaler
 
-    kernel = neg_w*w_scaler*np.ones((k_sz, k_sz), dtype=np.float32)
-
+    # Try Kernel WITHOUT negative values 'first'
+    kernel = np.zeros((k_sz, k_sz), dtype=np.float32)
     for r in pos_radi:
         for i in np.arange(r-thickness+1, r+1):
-            make_kernel_circle(i, k_sz, pos_w*w_scaler, kernel) # 38px
+            make_kernel_circle(i, k_sz, pos_w, kernel) # 38px
+
+    # Check positive values so as to compensate for them
+    total_positive = np.sum(kernel)
+    count_positive = np.sum(kernel > 0)
+
+    # neg_w is estimated to compensate for pos_w
+    neg_w = -total_positive/((k_sz*k_sz)-count_positive)
+
+    # Try Kernel WITH negative values
+    kernel = neg_w*np.ones((k_sz, k_sz), dtype=np.float32)
+    for r in pos_radi:
+        for i in np.arange(r-thickness+1, r+1):
+            make_kernel_circle(i, k_sz, pos_w, kernel) # 38px
+            
+
+
+    plt.imshow(kernel, interpolation='nearest')
+    colorbar = plt.colorbar()
+    colorbar.set_label('Color Scale')
+    plt.savefig(f"kernel.png")
+
 
     np.save("../common/kernel.npy", kernel)
     send_kernel()
 
-
-    cmap = plt.cm.get_cmap('viridis')
-    plt.imshow(kernel, cmap=cmap, interpolation='nearest')
-    colorbar = plt.colorbar()
-    colorbar.set_label('Color Scale')
-
-    plt.savefig("kernel.png")
-
-    
+    print(f"Positive weights: {round(pos_w,6)}")
+    print(f"Negative weights: {round(neg_w,6)}")
+        
     return kernel
 
 
@@ -131,7 +128,10 @@ def parse_args():
     parser.add_argument('-ip', '--ip-out', type= str, help="IP out", default="172.16.222.199")
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
-
+    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.10)
+    parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=3.0)
+    parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=2)
+    parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [s]", default=240)
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -144,7 +144,7 @@ if __name__ == '__main__':
     SPIF_IP = spin_spif_map[f"{args.board}"]
 
     print("Generating Kernel ... ")
-    kernel = make_whole_kernel(args.ks, dim.hs)
+    kernel = make_whole_kernel(args.ks, dim.hs, args.w_scaler, args.thickness)
 
     print("Configuring Infrastructure ... ")
     SUB_WIDTH = 16
@@ -170,7 +170,7 @@ if __name__ == '__main__':
     MY_PC_PORT = args.port_out
     SPIF_PORT = 3332
     POP_LABEL = "target"
-    RUN_TIME = 1000*60*240
+    RUN_TIME = 1000*60*args.runtime
     CHIP = (0, 0)
 
 
@@ -198,6 +198,17 @@ if __name__ == '__main__':
 
 
     print("Creating Network ... ")
+
+    cell_params = {'tau_m': args.tau_m/math.log(2),
+                'tau_syn_E': 1.0,
+                'tau_syn_I': 1.0,
+                'v_rest': -65.0,
+                'v_reset': -65.0,
+                'v_thresh': -60.0,
+                'tau_refrac': 0.0, # 0.1 originally
+                'cm': 1,
+                'i_offset': 0.0
+                }
 
     conn = p.external_devices.SPIFLiveSpikesConnection(
         [POP_LABEL], SPIF_IP, SPIF_PORT)
@@ -234,8 +245,8 @@ if __name__ == '__main__':
         print(f"\tNPC: {x} x {y}")
         print(f"\tOutput {out_width} x {out_height}")
         print(f"\tKernel Size: {len(kernel)}")
-        print(f"\tKernel Sum: {np.sum(kernel)}")
-        user_input = input_with_timeout("Happy? ", 20)
+        print(f"\tKernel Sum: {abs(round(np.sum(kernel),3))}")
+        user_input = input_with_timeout("Happy?\n ", 10)
     except KeyboardInterrupt:
         print("\n Simulation cancelled")
         quit()
