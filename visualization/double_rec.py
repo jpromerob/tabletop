@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument('-d', '--duration', type= int, help="Duration", default=1)
     parser.add_argument('-l', '--length', type=int, help="Image length", default=0)
     parser.add_argument('-w', '--width', type=int, help="Image width", default=0)
+    parser.add_argument('-pl', '--param-label', type=str, help="Parameters Label", default="none")
 
     return parser.parse_args()
 
@@ -107,8 +108,8 @@ if __name__ == '__main__':
     whole_duration = time.perf_counter() - beginning
     print(f"Whole recording lasted: {whole_duration:.3f} seconds")
 
-    print(f"{np.sum(orig_out)} events")
-    print(f"{np.sum(conv_out)} events")
+    print(f"{np.sum(orig_out)} events (to SPIF)")
+    print(f"{np.sum(conv_out)} events (from SPIF)")
     mean = 1e6*sum_et/read_counter
     print(f"Average reading time: {mean:.6f} [us]")
 
@@ -138,7 +139,7 @@ if __name__ == '__main__':
 
     # Get the current date and time
     current_datetime = datetime.now()
-    output_file = f"{current_datetime.year}_{current_datetime.month:02d}_{current_datetime.day:02d}_{current_datetime.hour:02d}_{current_datetime.minute:02d}_{args.acc_time}ms.avi"
+    output_file = f"{current_datetime.year}_{current_datetime.month:02d}_{current_datetime.day:02d}_{current_datetime.hour:02d}_{current_datetime.minute:02d}_{args.acc_time}ms_{args.param_label}.avi"
     print(f"File name: {output_file}")
     # pdb.set_trace()
 
@@ -152,13 +153,6 @@ if __name__ == '__main__':
 
     orig_out = orig_out.transpose((1, 2, 0))
     conv_out = conv_out.transpose((1, 2, 0))
-
-    # empty_frame_counter = 0
-    # for i in range(max_nb_frames):
-    #     if np.sum(orig_out[:,:,i])+np.sum(conv_out[:,:,i]) == 0:
-    #         empty_frame_counter +=1
-
-    # print(f"{empty_frame_counter}/{max_nb_frames} frames are empty")
 
     # Iterate through the frames and write to the video
     for i in range(max_nb_frames):
