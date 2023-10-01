@@ -15,35 +15,80 @@ import sys
 import csv
 import select
 
-def save_tuples_to_csv(data, filename):
-    """
-    Save a list of tuples to a CSV file.
+W_DIRECT = 5
+W_ACCUMULATION = 0.001*W_DIRECT # 
+W_INHIBITION = 0.001*W_DIRECT
 
-    Args:
-        data (list of tuples): The data to be saved.
-        filename (str): The name of the CSV file to create or overwrite.
-    """
+def save_tuples_to_csv(data, filename):
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         for row in data:
             writer.writerow(row)
 
-def create_conn_list(width, height):
+def create_2D_to_1D_conn_list(width, height):
     delay = 1 # [ms]
-    weight = 2.5 # 2*256/((width+height)/2)
-    conn_list = []
+    weight = 2.5 #2*256/((width+height)/2)
+    conn_2D_1D_list = []
+
     for idx in range(width*height):
         pre_idx = idx
         x = int(idx % width)
         y = int(idx / width)
-
         post_idx = x
-        conn_list.append((pre_idx, post_idx, weight, delay))
+        conn_2D_1D_list.append((pre_idx, post_idx, weight, delay))
         post_idx = width + y
-        conn_list.append((pre_idx, post_idx, weight, delay))
+        conn_2D_1D_list.append((pre_idx, post_idx, weight, delay))
 
-    save_tuples_to_csv(conn_list, "my_conn_list.csv")
-    return conn_list
+        # print(f"({x},{y}): idx:{pre_idx} --> {x} and --> {width + y}")
+        # if x == 0 or x == 31:
+        #     pdb.set_trace()
+    save_tuples_to_csv(conn_2D_1D_list, "my_conn_2D_1D_list.csv")
+    return conn_2D_1D_list
+
+def create_xy_inh_conn_list(width, height):
+    delay = 1 # [ms]
+    weight = W_ACCUMULATION
+    conn_xy_inh_list = []
+
+    for idx in range(width):
+        pre_idx = idx
+        post_idx = 0
+        conn_xy_inh_list.append((pre_idx, post_idx, weight, delay))
+        
+    for idx in range(height):
+        pre_idx = idx+width
+        post_idx = 1
+        conn_xy_inh_list.append((pre_idx, post_idx, weight, delay))
+
+    return conn_xy_inh_list
+
+def create_inh_wta_conn_list(width, height):
+    delay = 1 # [ms]
+    weight = W_INHIBITION
+    conn_inh_xy_list = []
+    
+    for idx in range(width):
+        pre_idx = 0
+        post_idx = idx       
+        conn_inh_xy_list.append((pre_idx, post_idx, weight, delay))
+
+    for idx in range(height):
+        pre_idx = 1
+        post_idx = idx + width      
+        conn_inh_xy_list.append((pre_idx, post_idx, weight, delay))
+
+    return conn_inh_xy_list
+
+def create_xy_wta_conn_list(width, height):
+    delay = 1 # [ms]
+    weight = W_DIRECT    
+    conn_xy_wta_list = []
+    for idx in range(width+height):
+        pre_idx = idx
+        post_idx = idx       
+        conn_xy_wta_list.append((pre_idx, post_idx, weight, delay))
+
+    return conn_xy_wta_list
 
 spin_spif_map = {"1": "172.16.223.2", 
                  "37": "172.16.223.106", 
@@ -151,25 +196,43 @@ if __name__ == '__main__':
     IN_POP_LABEL = "input"
     OUT_POP_LABEL = "output"
     MID_POP_LABEL = "middle"
+    WTA_POP_LABEL = "wta"
+    GIN_POP_LABEL = "geninhneu"
 
     # Setting up SPIF Output
-    conn_out = p.external_devices.SPIFLiveSpikesConnection([MID_POP_LABEL], SPIF_IP, SPIF_PORT)
-    conn_out.add_receive_callback(MID_POP_LABEL, recv_nid)
+    conn_out = p.external_devices.SPIFLiveSpikesConnection([WTA_POP_LABEL], SPIF_IP, SPIF_PORT)
+    conn_out.add_receive_callback(WTA_POP_LABEL, recv_nid)
     p_spif_out = p.external_devices.SPIFOutputDevice(database_notify_port_num=conn_out.local_port, chip_coords=CHIP)
 
 
-    # Virtual Input Population
-    spif_retina = p.Population(WIDTH * HEIGHT, p_spif_in, label=IN_POP_LABEL)
-    
-    
-    middle_pop = p.Population(WIDTH + HEIGHT, celltype(**cell_params), label=MID_POP_LABEL)
-    conn_list = create_conn_list(WIDTH, HEIGHT)
-    cell_conn = p.FromListConnector(conn_list, safe=True)     
-    p.Projection(spif_retina, middle_pop, cell_conn, receptor_type='excitatory')
-
-    
+    # Defining all the populations involved
+    spif_retina = p.Population(WIDTH * HEIGHT, p_spif_in, label=IN_POP_LABEL)   
+    middle_pop = p.Population(WIDTH + HEIGHT, celltype(**cell_params), label=MID_POP_LABEL) 
+    inhibitory_pop = p.Population(2, celltype(**cell_params), label=GIN_POP_LABEL)   
+    wta_pop = p.Population(WIDTH + HEIGHT, celltype(**cell_params), label=WTA_POP_LABEL)
     spif_output = p.Population(None, p_spif_out, label=OUT_POP_LABEL)
-    p.external_devices.activate_live_output_to(middle_pop, spif_output)
+
+    # Connections between 2D SPIF input and middle_pop
+    conn_2D_1D_list = create_2D_to_1D_conn_list(WIDTH, HEIGHT)
+    cell_conn_2D_1D = p.FromListConnector(conn_2D_1D_list, safe=True)     
+    p.Projection(spif_retina, middle_pop, cell_conn_2D_1D, receptor_type='excitatory')
+
+    # Excitatory connections from middle_pop inhibitory_pop
+    conn_xy_inh = create_xy_inh_conn_list(WIDTH, HEIGHT)
+    cell_conn_xy_inh = p.FromListConnector(conn_xy_inh, safe=True)     
+    p.Projection(middle_pop, inhibitory_pop, cell_conn_xy_inh, receptor_type='excitatory')
+
+    # Inhibitory connections from inhibitory_pop to wta_pop
+    conn_inh_wta = create_inh_wta_conn_list(WIDTH, HEIGHT)
+    cell_conn_inh_wta = p.FromListConnector(conn_inh_wta, safe=True)     
+    p.Projection(inhibitory_pop, wta_pop, cell_conn_inh_wta, receptor_type='inhibitory')
+    
+    # Excitatory connections from middle_pop to wta_pop
+    conn_xy_wta = create_xy_wta_conn_list(WIDTH, HEIGHT)
+    cell_conn_xy_wta = p.FromListConnector(conn_xy_wta, safe=True)   
+    p.Projection(middle_pop, wta_pop, cell_conn_xy_wta, receptor_type='excitatory')
+
+    p.external_devices.activate_live_output_to(wta_pop, spif_output)
 
 
     try:

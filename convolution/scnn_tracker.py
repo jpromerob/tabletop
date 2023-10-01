@@ -124,8 +124,10 @@ def parse_args():
 
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
 
-    parser.add_argument('-po', '--port-out', type= int, help="Port Out", default=3331)
-    parser.add_argument('-ip', '--ip-out', type= str, help="IP out", default="172.16.222.199")
+    parser.add_argument('-vpo', '--vis-port', type= int, help="Port Out", default=3331)
+    parser.add_argument('-vip', '--vis-ip', type= str, help="IP out", default="172.16.222.199")
+    parser.add_argument('-wpo', '--wta_port', type= int, help="Port Out", default=3333)
+    parser.add_argument('-wip', '--wta_ip', type= str, help="IP out", default="172.16.223.10")
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
     parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.10)
@@ -163,11 +165,13 @@ if __name__ == '__main__':
         if (x*y >= (WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
             break
     
-    NPC_X = x
-    NPC_Y = y
+    NPC_X = x*2
+    NPC_Y = y*2
 
-    MY_PC_IP = args.ip_out
-    MY_PC_PORT = args.port_out
+    VIS_IP = args.vis_ip
+    VIS_PORT = args.vis_port
+    WTA_IP = args.wta_ip
+    WTA_PORT = args.wta_port
     SPIF_PORT = 3332
     POP_LABEL = "target"
     RUN_TIME = 1000*60*args.runtime
@@ -186,15 +190,36 @@ if __name__ == '__main__':
 
     def recv_nid(label, spikes):
         global sock
-        data = b""
+        vis_data = b""
+        wta_data = b""
         np_spikes = np.array(spikes)
+        # max_x_wta = 0
+        # max_y_wta = 0
+        # min_x_wta = 1000
+        # min_y_wta = 1000
         for i in range(np_spikes.shape[0]):      
-            x = int(np_spikes[i]) % out_width
-            y = int(int(np_spikes[i]) / out_width)
+            x_vis = int(np_spikes[i]) % out_width
+            y_vis = int(int(np_spikes[i]) / out_width)
+            x_wta = int(x_vis/2)
+            y_wta = int(y_vis/2)
+            # # update maxs
+            # if x_wta > max_x_wta:
+            #     max_x_wta = x_wta
+            # if y_wta > max_y_wta:
+            #     max_y_wta = y_wta
+            # # update mins
+            # if x_wta < min_x_wta:
+            #     min_x_wta = x_wta
+            # if y_wta < min_y_wta:
+            #     min_y_wta = y_wta
             polarity = 1
-            packed = (NO_TIMESTAMP + (polarity << P_SHIFT) + (y << Y_SHIFT) + (x << X_SHIFT))
-            data += pack("<I", packed)
-        sock.sendto(data, (MY_PC_IP, MY_PC_PORT))
+            packed_vis = (NO_TIMESTAMP + (polarity << P_SHIFT) + (y_vis << Y_SHIFT) + (x_vis << X_SHIFT))
+            packed_wta = (NO_TIMESTAMP + (polarity << P_SHIFT) + (y_wta << Y_SHIFT) + (x_wta << X_SHIFT))
+            vis_data += pack("<I", packed_vis)
+            wta_data += pack("<I", packed_wta)
+        sock.sendto(vis_data, (VIS_IP, VIS_PORT))
+        sock.sendto(wta_data, (WTA_IP, WTA_PORT))
+        # print(f"{max_x_wta},{max_y_wta},{min_x_wta},{min_y_wta}")
 
 
     print("Creating Network ... ")
@@ -242,7 +267,7 @@ if __name__ == '__main__':
 
     try:
         print("List of parameters:")
-        print(f"\tNPC: {x} x {y}")
+        print(f"\tNPC: {NPC_X} x {NPC_Y}")
         print(f"\tOutput {out_width} x {out_height}")
         print(f"\tKernel Size: {len(kernel)}")
         print(f"\tKernel Sum: {abs(round(np.sum(kernel),3))}")

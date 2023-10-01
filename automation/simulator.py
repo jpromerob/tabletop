@@ -16,7 +16,7 @@ def get_parameters(input_string):
 
 
 def stop_simulation():
-    time.sleep(60*10)
+    time.sleep(60*5) #@TODO: 5 for high NPC, 10 for low NPC
     os.system("pkill -f scnn_tracker.py")
     
 
@@ -50,7 +50,7 @@ while True:
 
         print(f"Loading and running simulation with t_m:{t_m}, w_s:{w_s}, th:{th}")
         os.system(f"rm -rf ~/tabletop/*/reports")
-        os.system(f"python3 ~/tabletop/convolution/scnn_tracker.py -tm {t_m} -ws {w_s} -th {th} -rt 4")
+        os.system(f"python3 ~/tabletop/convolution/scnn_tracker.py -tm {t_m} -ws {w_s} -th {th} -rt 2") # @TODO: 4 for low NPC, 2 for high NPC
 
 
         force_sim_to_stop.join()
