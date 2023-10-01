@@ -6,7 +6,7 @@ def upscale_video(filename, scaling_factor):
 
 
     input_filename = filename
-    output_filename = f"{filename[21:-4]}_x4.avi"
+    output_filename = f"{filename[21:-4]}_x{scaling_factor}.avi"
 
     # pdb.set_trace()
 
