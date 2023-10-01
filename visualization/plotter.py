@@ -32,7 +32,7 @@ def animate(i):
     current_x = new_robot_x.value
     current_y = new_robot_y.value
 
-    print(f"({current_x},{current_y})")
+    # print(f"({current_x},{current_y})")
     x_data.append(current_x)
     y_data.append(current_y)
 
@@ -70,10 +70,8 @@ def receive_data():
         new_robot_y.value = current_y
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='SpiNNaker-SPIF Simulation with Artificial Data')
-    parser.add_argument('-t', '--trajectory', type=str, help="Trajectory: linear, circular, spinnaker", default="linear")
-    parser.add_argument('-s', '--speed', type=int, help="Speed: 1 to 100", default=10)
-    parser.add_argument('-l', '--line', type=int, help="Line: 0 is back, 18 is front", default=0)
+    parser = argparse.ArgumentParser(description='Air Hockey Puck Live XY Position')
+    
     return parser.parse_args()
 
 if __name__ == '__main__':

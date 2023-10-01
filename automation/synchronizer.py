@@ -33,7 +33,8 @@ for th in [2,1]:
 
 # pdb.set_trace()
 
-loading_time = 60*6 # seconds (i.e 8 minutes)
+lt = int(input("loading time (in [minutes]): "))
+loading_time = 60*lt # seconds (i.e 8 minutes)
 run_counter = 0
 start_time = time.time()
 for w_s, t_m, th in parameters:
