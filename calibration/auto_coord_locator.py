@@ -162,7 +162,7 @@ def get_new_coord(x, y, h, dim, marker_list, radius):
         if x == ml_x and y == ml_y:
             pass
         else:
-            if math.sqrt((x-ml_x)**2+(y-ml_y)**2) <= radius :
+            if math.sqrt((x-ml_x)**2+(y-ml_y)**2) <= 2*radius :
                 idx_x = -1
                 idx_y = -1     
  
@@ -314,6 +314,7 @@ if __name__ == '__main__':
         args.res_y = 480
 
     dim = get_dimensions(args.res_x, args.res_y, args.hom_scale)
+    
     dim.save_to_file('../common/homdim.pkl')
 
     # Step 1: Record the start time

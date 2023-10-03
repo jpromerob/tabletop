@@ -49,20 +49,24 @@ parser = argparse.ArgumentParser(description='Visualizer')
 parser.add_argument('-p1', '--port1', type= int, help="Port for events", default=1987)
 parser.add_argument('-p2', '--port2', type= int, help="Port for events", default=1988)
 parser.add_argument('-s', '--scale', type= float, help="Image scale", default=1)
-parser.add_argument('-x', '--width', type= int, help="X res = width", default=64)
-parser.add_argument('-y', '--height', type= int, help="Y res = height", default=64)
 
 args = parser.parse_args()
 
+kernel = np.load("../common/kernel.npy")
+k_sz = len(kernel)
 dim = Dimensions.load_from_file('../common/homdim.pkl')
+
 
 e_port_1 = args.port1
 e_port_2 = args.port2
-width = args.width
-height = args.height
+width = dim.fl
+height = dim.fw
+width_cnn = (width-k_sz+1)
+height_cnn = (height-k_sz+1)
+k_margin = int(k_sz/2)
 
 
-cv2.namedWindow('Airhocket Display')
+cv2.namedWindow('Airhockey Display')
 # Create a UDP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -74,7 +78,7 @@ mean_x = int(width/2)
 mean_y = int(height/2)
 new_robot_x, new_robot_y = from_px_to_cm(dim, mean_x, mean_y)
 with aestream.UDPInput((width, height), device = 'cpu', port=e_port_1) as stream1:
-    with aestream.UDPInput((width+height,1), device = 'cpu', port=e_port_2) as stream2:
+    with aestream.UDPInput((width_cnn+height_cnn,1), device = 'cpu', port=e_port_2) as stream2:
             
         while True:
                 
@@ -85,11 +89,11 @@ with aestream.UDPInput((width, height), device = 'cpu', port=e_port_1) as stream
 
                 frame[1:width+1,1:height+1,1] = aux # Provides a (width, height) tensor
 
-                x_array = xy_aux[0:width,0]
-                y_array = np.transpose(xy_aux[width:,0])
+                x_array = xy_aux[0:width_cnn,0]
+                y_array = np.transpose(xy_aux[width_cnn:,0])
 
-                frame[0:width,0,2] = x_array
-                frame[0,0:height,2] = y_array
+                frame[k_margin:width_cnn+k_margin,0,2] = x_array
+                frame[0,k_margin:height_cnn+k_margin,2] = y_array
 
                 x_idx = np.where(x_array > 0)
                 y_idx = np.where(y_array > 0)
@@ -102,14 +106,12 @@ with aestream.UDPInput((width, height), device = 'cpu', port=e_port_1) as stream
                 sock.sendto(message.encode(), (controller_ip, controller_port))
                 sock.sendto(message.encode(), (plotter_ip, plotter_port))
 
-                nx = args.scale*args.width/width
-                ny = args.scale*args.height/height
 
-                image = cv2.resize(frame.transpose(1,0,2), (math.ceil(width*nx),math.ceil(height*ny)), interpolation = cv2.INTER_AREA)
+                image = cv2.resize(frame.transpose(1,0,2), (math.ceil(width*args.scale),math.ceil(height*args.scale)), interpolation = cv2.INTER_AREA)
                 # pdb.set_trace()
-                cv2.circle(image, (int(mean_x*nx), int(mean_y*ny)), int(3*args.scale), color=(255,0,255), thickness=-2)
+                cv2.circle(image, (int(mean_x*args.scale), int(mean_y*args.scale)), int(3*args.scale), color=(255,0,255), thickness=-2)
                 
-                cv2.imshow('Durin On Board', image)
+                cv2.imshow('Airhockey Display', image)
                 cv2.waitKey(1)
 
     
