@@ -2,4 +2,5 @@ reports/
 __pycache__/
 *.avi
 *.zip
-videos/
+videos
+recordings/
