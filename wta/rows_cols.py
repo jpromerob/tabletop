@@ -102,7 +102,7 @@ if __name__ == '__main__':
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 
-    def recv_nid(label, spikes):
+    def recv_nid_rc(label, spikes):
         global sock
         data = b""
         np_spikes = np.array(spikes)
@@ -154,7 +154,7 @@ if __name__ == '__main__':
 
     # Setting up SPIF Output
     conn_out = p.external_devices.SPIFLiveSpikesConnection([MID_POP_LABEL], SPIF_IP, SPIF_PORT)
-    conn_out.add_receive_callback(MID_POP_LABEL, recv_nid)
+    conn_out.add_receive_callback(MID_POP_LABEL, recv_nid_rc)
     p_spif_out = p.external_devices.SPIFOutputDevice(database_notify_port_num=conn_out.local_port, chip_coords=CHIP)
 
 
