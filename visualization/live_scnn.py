@@ -36,6 +36,10 @@ def from_px_to_cm(dim, px_x, px_y):
 
     return x, y
 
+def split_and_sum(original_array, block_size):
+    n, m = original_array.shape
+    result_array = original_array.reshape(n // block_size, block_size, m // block_size, block_size).sum(axis=(1, 3))
+    return result_array
 
 def parse_args():
 
@@ -65,6 +69,7 @@ if __name__ == '__main__':
 
     # Stream events from UDP port 3333 (default)
     black = np.zeros((dim.fl,dim.fw,3))
+    # pdb.set_trace()
     frame = black
 
 
@@ -88,6 +93,7 @@ if __name__ == '__main__':
     print(f"Kernel {k_sz} px")
     x_k = int(dim.fl/2) - int(k_sz/2)
     y_k = int(dim.fw/2) - int(k_sz/2)
+    flag_update_old = False
     with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_0) as original:
         with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_1) as convolved:
                     
@@ -105,12 +111,27 @@ if __name__ == '__main__':
                 frame[:,:,1] = orig_out
                 frame[int(k_sz/2):dim.fl-int(k_sz/2),int(k_sz/2):dim.fw-int(k_sz/2),0] = conv_out[0:dim.fl-k_sz+1,0:dim.fw-k_sz+1]
                 
+                
+                # half_conv_out = split_and_sum(conv_out[:dim.fl-dim.fl%2,:dim.fw-dim.fw%2], 2)
+                
+
+                # half_conv_out = split_and_sum(conv_out[:dim.fl-dim.fl%2,:dim.fw-dim.fw%2], 2)
+                # hm = max(0,hmean(half_conv_out[half_conv_out>0]))
+                # print(half_conv_out.shape)
+                # row_indices, column_indices = np.where(conv_out > 0.05)
+                # if np.sum(conv_out) > 5:
+                    
+                #     if len(row_indices)>0 and len(column_indices)>0:
+                #         flag_update_old = True
+                #         new_avg_row_idx = int(np.mean(row_indices))+int(k_sz/2)     
+                #         new_avg_col_idx = int(np.mean(column_indices))+int(k_sz/2)
+
+
                 row_indices, column_indices = np.where(conv_out > 0.05)
                 if np.sum(conv_out) > 5:
                     
                     if len(row_indices)>0 and len(column_indices)>0:
-                        old_avg_row_idx = new_avg_row_idx
-                        old_avg_col_idx = new_avg_col_idx
+                        flag_update_old = True
                         new_avg_row_idx = int(np.mean(row_indices))+int(k_sz/2)     
                         new_avg_col_idx = int(np.mean(column_indices))+int(k_sz/2)
                 
@@ -128,8 +149,15 @@ if __name__ == '__main__':
                     sock.sendto(message.encode(), (controller_ip, controller_port))
                     sock.sendto(message.encode(), (plotter_ip, plotter_port))
 
-                # Draw Tracker
-                cv2.circle(image, (new_avg_row_idx*args.vis_scale, new_avg_col_idx*args.vis_scale), 3*args.vis_scale, color=(255,0,255), thickness=-2)
+                    cv2.circle(image, (new_avg_row_idx*args.vis_scale, new_avg_col_idx*args.vis_scale), 3*args.vis_scale, color=(255,0,255), thickness=-2)
+                else:
+                    cv2.circle(image, (old_avg_row_idx*args.vis_scale, old_avg_col_idx*args.vis_scale), 3*args.vis_scale, color=(255,0,255), thickness=-2)
+
+
+                if flag_update_old:
+                    old_avg_row_idx = new_avg_row_idx
+                    old_avg_col_idx = new_avg_col_idx
+                    flag_update_old = False
 
                 # Define the four corners of the field
                 corners = np.array(field, np.int32)
