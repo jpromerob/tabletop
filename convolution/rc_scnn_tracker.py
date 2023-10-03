@@ -32,7 +32,7 @@ def save_tuples_to_csv(data, filename):
             writer.writerow(row)
 
 def create_conn_list(width, height):
-    delay = 1 # [ms]
+    delay = 0.1 # [ms]
     weight = 56
     conn_list = []
     for idx in range(width*height):
@@ -45,6 +45,28 @@ def create_conn_list(width, height):
         post_idx = width + y
         conn_list.append((pre_idx, post_idx, weight, delay))
 
+    save_tuples_to_csv(conn_list, "my_conn_list.csv")
+    return conn_list
+
+def create_inner_conn_list(w, h, npc_x, npc_y):
+    conn_list = []    
+    weight = 56
+    delay = 0.1 # 1 [ms]
+    nb_col = math.ceil(w/npc_x)
+    nb_row = math.ceil(h/npc_y)
+
+    pre_idx = -1
+    for h_block in range(nb_row):
+        for v_block in range(nb_col):
+            for row in range(npc_y):
+                for col in range(npc_x):
+                    x = v_block*npc_y+col
+                    y = h_block*npc_x+row
+                    if x<w and y<h:
+                        pre_idx += 1                       
+                        conn_list.append((pre_idx, x, weight, delay))
+                        conn_list.append((pre_idx, w+y, weight, delay))
+        
     save_tuples_to_csv(conn_list, "my_conn_list.csv")
     return conn_list
 
@@ -247,10 +269,10 @@ if __name__ == '__main__':
         for i in range(np_spikes.shape[0]):    
             x = int(np_spikes[i]) % (OUT_WIDTH+OUT_HEIGHT)
             y = int(int(np_spikes[i]) / (OUT_WIDTH+OUT_HEIGHT))
-            if(x<OUT_WIDTH):
-                print(f"x:{x}")
-            else:
-                print(f"\t\ty:{x-OUT_WIDTH}")
+            # if(x<OUT_WIDTH):
+            #     print(f"x:{x}")
+            # else:
+            #     print(f"\t\ty:{x-OUT_WIDTH}")
             polarity = 1
             packed = (NO_TIMESTAMP + (polarity << P_SHIFT) + (y << Y_SHIFT) + (x << X_SHIFT))
             data += pack("<I", packed)
@@ -296,7 +318,8 @@ if __name__ == '__main__':
 
     # Setting XY Projection Layer
     xyp_pop = p.Population(OUT_WIDTH + OUT_HEIGHT, celltype(**cell_params), label=XYP_POP_LABEL)
-    conn_list = create_conn_list(OUT_WIDTH, OUT_HEIGHT)
+    # conn_list = create_conn_list(OUT_WIDTH, OUT_HEIGHT)
+    conn_list = create_inner_conn_list(OUT_WIDTH, OUT_HEIGHT, NPC_X, NPC_Y)
     cell_conn = p.FromListConnector(conn_list, safe=True)     
 
     
