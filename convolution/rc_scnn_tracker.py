@@ -126,6 +126,7 @@ def make_whole_kernel(k_sz, hs, w_scaler, thickness):
 
     # Radius of pattern edges (target)
     pos_radi = np.array([20,9])*hs
+    neg_radi = np.array([2,3,14,15])*hs
 
     # pos_w is given by the w_scaler
     pos_w = w_scaler
@@ -134,11 +135,14 @@ def make_whole_kernel(k_sz, hs, w_scaler, thickness):
     kernel = np.zeros((k_sz, k_sz), dtype=np.float32)
     for r in pos_radi:
         for i in np.arange(r-thickness+1, r+1):
-            make_kernel_circle(i, k_sz, pos_w, kernel) # 38px
+            make_kernel_circle(i, k_sz, pos_w, kernel)
+    for r in neg_radi:
+        for i in np.arange(r-thickness+1, r+1):
+            make_kernel_circle(i, k_sz, -pos_w, kernel)
 
     # Check positive values so as to compensate for them
     total_positive = np.sum(kernel)
-    count_positive = np.sum(kernel > 0)
+    count_positive = np.sum(kernel != 0)
 
     # neg_w is estimated to compensate for pos_w
     neg_w = -total_positive/((k_sz*k_sz)-count_positive)
@@ -147,7 +151,10 @@ def make_whole_kernel(k_sz, hs, w_scaler, thickness):
     kernel = neg_w*np.ones((k_sz, k_sz), dtype=np.float32)
     for r in pos_radi:
         for i in np.arange(r-thickness+1, r+1):
-            make_kernel_circle(i, k_sz, pos_w, kernel) # 38px
+            make_kernel_circle(i, k_sz, pos_w, kernel) 
+    for r in neg_radi:
+        for i in np.arange(r-thickness+1, r+1):
+            make_kernel_circle(i, k_sz, -pos_w, kernel)
             
 
 
@@ -182,7 +189,7 @@ def parse_args():
     parser.add_argument('-ip', '--ip', type= str, help="IP out", default="172.16.222.199")
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
-    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.80)
+    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.80) # 0.5 xyp | 0.8 cnn
     parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=3.0)
     parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=2)
     parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [s]", default=240)
@@ -192,10 +199,13 @@ def parse_args():
 if __name__ == '__main__':
 
     args = parse_args()
-    if args.mode == "cnn":
-        showing_cnn = True 
+    if args.mode == "xyp":
+        full_cnn_xy = True 
+    elif args.mode == "cnn":
+        full_cnn_xy = False 
     else:
-        showing_cnn = False 
+        print("Wrong Mode")
+        quit()
     
 
     dim = Dimensions.load_from_file('../common/homdim.pkl')
@@ -316,30 +326,30 @@ if __name__ == '__main__':
                             structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=CNN_POP_LABEL)
 
 
-    # Setting XY Projection Layer
-    xyp_pop = p.Population(OUT_WIDTH + OUT_HEIGHT, celltype(**cell_params), label=XYP_POP_LABEL)
-    # conn_list = create_conn_list(OUT_WIDTH, OUT_HEIGHT)
-    conn_list = create_inner_conn_list(OUT_WIDTH, OUT_HEIGHT, NPC_X, NPC_Y)
-    cell_conn = p.FromListConnector(conn_list, safe=True)     
-
-    
-    # Projections
+    # Projection from SPIF virtual to CNN population
     p.Projection(p_spif_virtual, cnn_pop, convolution, p.Convolution())
-    p.Projection(cnn_pop, xyp_pop, cell_conn, receptor_type='excitatory')
+
+    # Adding XY population
+    if full_cnn_xy:
+        # Setting XY Projection Layer
+        xyp_pop = p.Population(OUT_WIDTH + OUT_HEIGHT, celltype(**cell_params), label=XYP_POP_LABEL)
+        conn_list = create_inner_conn_list(OUT_WIDTH, OUT_HEIGHT, NPC_X, NPC_Y)
+        cell_conn = p.FromListConnector(conn_list, safe=True) 
+        p.Projection(cnn_pop, xyp_pop, cell_conn, receptor_type='excitatory')
 
     # Setting up SPIF Output
-    if showing_cnn:
-        conn_cnn = p.external_devices.SPIFLiveSpikesConnection([CNN_POP_LABEL], SPIF_IP_A, SPIF_PORT)
-        conn_cnn.add_receive_callback(CNN_POP_LABEL, recv_nid)
-        spif_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-            database_notify_port_num=conn_cnn.local_port, chip_coords=CHIP), label="cnn_output")
-        p.external_devices.activate_live_output_to(cnn_pop, spif_cnn_output)
-    else:
+    if full_cnn_xy:
         conn_xyp = p.external_devices.SPIFLiveSpikesConnection([XYP_POP_LABEL], SPIF_IP_A, SPIF_PORT)
         conn_xyp.add_receive_callback(XYP_POP_LABEL, recv_nid_rc)
         spif_xyp_output = p.Population(None, p.external_devices.SPIFOutputDevice(
             database_notify_port_num=conn_xyp.local_port, chip_coords=CHIP), label="xyp_output")
         p.external_devices.activate_live_output_to(xyp_pop, spif_xyp_output)
+    else:
+        conn_cnn = p.external_devices.SPIFLiveSpikesConnection([CNN_POP_LABEL], SPIF_IP_A, SPIF_PORT)
+        conn_cnn.add_receive_callback(CNN_POP_LABEL, recv_nid)
+        spif_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+            database_notify_port_num=conn_cnn.local_port, chip_coords=CHIP), label="cnn_output")
+        p.external_devices.activate_live_output_to(cnn_pop, spif_cnn_output)
 
 
     try:
