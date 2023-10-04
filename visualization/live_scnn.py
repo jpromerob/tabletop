@@ -19,6 +19,7 @@ import socket
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from multiprocessing import Value  # Import Value for shared variable
+from playsound import playsound
 
 # IP and port of the receiver (Computer B)
 controller_ip = "172.16.222.30"
@@ -53,7 +54,6 @@ def from_px_to_cm(dim, px_x, px_y):
 
 
     return x, y
-
 
 
 def visualize(args, dim, kernel, x_px, y_px):
@@ -107,7 +107,6 @@ def visualize(args, dim, kernel, x_px, y_px):
             cv2.waitKey(1)
 
 
-
 def xy_from_cnn(args, dim, kernel, x_px, y_px, x_cm, y_cm):
     '''
     This function:
@@ -121,43 +120,26 @@ def xy_from_cnn(args, dim, kernel, x_px, y_px, x_cm, y_cm):
     convolved_img = torch.zeros(1, 1, dim.fl, dim.fw)
     
 
-    x_px.value = int(dim.fl/2)
-    y_px.value = int(dim.fw/2)
-    old_x_px = x_px.value
-    old_y_px = y_px.value
+    (x_px.value, y_px.value) = (int(dim.fl/2),int(dim.fw/2))
     x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
 
     k_sz = len(kernel)
-
-
-    flag_update_old = False
     with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_cnn) as convolved:
                 
         while True:
 
             convolved_img[0,0,:,:] = convolved.read()
             conv_out = np.squeeze(convolved_img.numpy())
-            row_indices, column_indices = np.where(conv_out > 0.9)
-            if np.sum(conv_out) > 10:
-                
-                if len(row_indices)>0 and len(column_indices)>0:
-                    flag_update_old = True
-                    x_px.value = int(np.mean(row_indices))+int(k_sz/2)     
-                    y_px.value = int(np.mean(column_indices))+int(k_sz/2)
+            row_idxs, col_idxs = np.where(conv_out > 0.9)
+            if len(row_idxs)>0 and len(col_idxs)>0 and np.sum(conv_out) > 10:                
+                x_px.value = int(np.mean(row_idxs))+int(k_sz/2)     
+                y_px.value = int(np.mean(col_idxs))+int(k_sz/2)
             
-            # Send new coordinates only if they are sufficiently different
-            if math.sqrt((x_px.value-old_x_px)**2+(y_px.value-old_y_px)**2)>=1:
-
-                # Estimate coordinates in robot coordinate frame
-                x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
-                message = f"{x_cm.value},{y_cm.value}"
-                sock.sendto(message.encode(), (controller_ip, controller_port))
-                sock.sendto(message.encode(), (plotter_ip, plotter_port))
-
-            if flag_update_old:
-                old_x_px = x_px.value
-                old_y_px = y_px.value
-                flag_update_old = False
+            # Estimate coordinates in robot coordinate frame
+            x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
+            message = f"{x_cm.value},{y_cm.value}"
+            sock.sendto(message.encode(), (controller_ip, controller_port))
+            sock.sendto(message.encode(), (plotter_ip, plotter_port))
 
 
 
@@ -172,10 +154,7 @@ def xy_from_xyp(args, dim, kernel, x_px, y_px, x_cm, y_cm):
     # Create a UDP socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    x_px.value = int(dim.fl/2)
-    y_px.value = int(dim.fw/2)
-    old_x_px = x_px.value
-    old_y_px = y_px.value
+    (x_px.value, y_px.value) = (int(dim.fl/2),int(dim.fw/2))
     x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
 
     k_sz = len(kernel)
@@ -196,18 +175,14 @@ def xy_from_xyp(args, dim, kernel, x_px, y_px, x_cm, y_cm):
             if np.sum(x_idx)>0 and np.sum(y_idx)>0:
                 x_px.value = int(np.mean(x_idx)+k_margin)
                 y_px.value = int(np.mean(y_idx)+k_margin)
-            
-            # Send new coordinates only if they are sufficiently different
-            if math.sqrt((x_px.value-old_x_px)**2+(y_px.value-old_y_px)**2)>=1:
 
-                # Estimate coordinates in robot coordinate frame
-                x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
-                message = f"{x_cm.value},{y_cm.value}"
-                sock.sendto(message.encode(), (controller_ip, controller_port))
-                sock.sendto(message.encode(), (plotter_ip, plotter_port))
+            # Estimate coordinates in robot coordinate frame
+            x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
+            message = f"{x_cm.value},{y_cm.value}"
+            sock.sendto(message.encode(), (controller_ip, controller_port))
+            sock.sendto(message.encode(), (plotter_ip, plotter_port))
 
-            old_x_px = x_px.value
-            old_y_px = y_px.value
+
 
 
 def plot_live():
@@ -235,7 +210,7 @@ def plot_live():
         y_data.append(y_cm.value)
 
         # Keep only the latest 'max_data_points' data points
-        if len(x_data) > 40:
+        if len(x_data) > 100:
             x_data.pop(0)
             y_data.pop(0)
 
@@ -254,6 +229,38 @@ def plot_live():
     plt.show()
 
 
+def sonilize(args, dim, kernel,x_px,y_px):
+    last_wall = "none"
+    k_sz = len(kernel)
+    k_margin = 2*int(k_sz/2)
+    play_sound = False
+    
+
+    while True:
+        play_sound = False
+        if (x_px.value <= k_margin):
+            if last_wall != "left":
+                play_sound = True
+            last_wall = "left"
+        elif (x_px.value >= dim.fl-k_margin):
+            if last_wall != "right":
+                play_sound = True
+            last_wall = "right"
+        elif (y_px.value <= k_margin):
+            if last_wall != "up":
+                play_sound = True
+            last_wall = "up"
+        elif (y_px.value >= dim.fw-k_margin):
+            if last_wall != "down":
+                play_sound = True
+            last_wall = "down"
+        
+        if play_sound:                    
+            hit_sound = 'soundx9.mp3'
+            playsound(hit_sound)
+            
+
+
 def parse_args():
 
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
@@ -264,6 +271,7 @@ def parse_args():
     parser.add_argument('-vs', '--vis-scale', type=int, help="Visualization scale", default=1)
     parser.add_argument('-md', '--mode', type= str, help="Mode: cnn|xyp", default="xyp")
     parser.add_argument('-lp', '--live-plot', action='store_true', help="Live Plot")
+    parser.add_argument('-ls', '--live-sound', action='store_true', help="Live Sound")
 
 
     return parser.parse_args()
@@ -289,6 +297,11 @@ if __name__ == '__main__':
 
     visualization = multiprocessing.Process(target=visualize, args=(args, dim, kernel,x_px,y_px,))
     visualization.daemon = True
+
+    if args.live_sound:
+        sonification = multiprocessing.Process(target=sonilize, args=(args, dim, kernel,x_px,y_px,))
+        sonification.daemon = True
+        sonification.start()
 
     if args.live_plot:
         print("We are plotting in Real Time")
