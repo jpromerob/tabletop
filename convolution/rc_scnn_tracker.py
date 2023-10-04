@@ -190,7 +190,7 @@ def parse_args():
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
     parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.80) # 0.5 xyp | 0.8 cnn
-    parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=3.0)
+    parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=4.0) # __ xyp | 4 cnn
     parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=2)
     parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [s]", default=240)
     parser.add_argument('-md', '--mode', type=str, help="SPIF Out: cnn or xyp", default="cnn")
