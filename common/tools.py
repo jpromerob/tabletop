@@ -54,9 +54,9 @@ def get_shapes(dim, vis_scale):
     c2 = [(dim.d2ex)*vis_scale, (dim.d2ey)*vis_scale]
     c3 = [(dim.d2ex+dim.il)*vis_scale, (dim.d2ey)*vis_scale]
     c4 = [(dim.d2ex+dim.il)*vis_scale, (dim.d2ey+dim.iw)*vis_scale]
-    # c5 = [(dim.d2ex+int(dim.il/2))*vis_scale, (dim.d2ey+int(dim.iw/2))*vis_scale]
+    c5 = [(dim.d2ex+int(dim.il/2))*vis_scale, (dim.d2ey+int(dim.iw/2))*vis_scale]
 
-    circles = [c1, c2, c3, c4]
+    circles = [c1, c2, c3, c4, c5]
     radius = dim.cmr*vis_scale
 
     # Coordinates of rectangles that define the goals

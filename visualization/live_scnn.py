@@ -13,6 +13,12 @@ import argparse
 import matplotlib.pyplot as plt
 import socket
 import random
+import multiprocessing
+import time
+import socket
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from multiprocessing import Value  # Import Value for shared variable
 
 # IP and port of the receiver (Computer B)
 controller_ip = "172.16.222.30"
@@ -21,8 +27,20 @@ plotter_ip = controller_ip
 # plotter_ip = "172.16.222.199"
 plotter_port = 4000
 
+########################################################################################
+#                                    SHARED VARIABLES                                  #
+########################################################################################
+x_px = multiprocessing.Value('i', 0)
+y_px = multiprocessing.Value('i', 0)
+x_cm = multiprocessing.Value('d', 0.0)
+y_cm = multiprocessing.Value('d', 0.0)
+
 
 def from_px_to_cm(dim, px_x, px_y):
+    '''
+    This funciton:
+       - converts a px coordinate (camera space) to cm coorinate (robot space)
+    '''
 
     a_x = -17.2/dim.iw
     b_x = 8.6 - a_x*dim.d2ey
@@ -36,18 +54,217 @@ def from_px_to_cm(dim, px_x, px_y):
 
     return x, y
 
-def split_and_sum(original_array, block_size):
-    n, m = original_array.shape
-    result_array = original_array.reshape(n // block_size, block_size, m // block_size, block_size).sum(axis=(1, 3))
-    return result_array
+
+
+def visualize(args, dim, kernel, x_px, y_px):
+    '''
+    This function:
+       - receives data from Camera through AEstream
+       - displays raw data
+       - draws play area and a marker indicating Puck's current (x, y)
+
+    '''
+    
+    cv2.namedWindow('Air-Hockey Display')
+    black = np.zeros((dim.fl,dim.fw,3))
+    frame = black
+
+    field, line, goals, circles, radius = get_shapes(dim, args.vis_scale)
+    red = (0, 0, 255)
+    draw_kernel = False
+    k_sz = len(kernel)
+    x_k = int(dim.fl/2) - int(k_sz/2)
+    y_k = int(dim.fw/2) - int(k_sz/2)
+    
+    with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_raw) as original:
+                    
+        while True:
+
+            # Read Raw data
+            orig_out = np.squeeze(original.read().numpy())
+
+            # Visualize raw data
+            frame = black
+            if draw_kernel:
+                frame[x_k:x_k+k_sz,y_k:y_k+k_sz,2] = 100*kernel
+            frame[:,:,1] = orig_out
+            image = cv2.resize(frame.transpose(1,0,2), (math.ceil(dim.fl*args.vis_scale),math.ceil(dim.fw*args.vis_scale)), interpolation = cv2.INTER_AREA)
+            
+
+            # Super Impose Play Area Features
+            corners = np.array(field, np.int32)
+            cv2.polylines(image, [corners], isClosed=True, color=red, thickness=1)
+            for goal in goals:
+                corners = np.array(goal, np.int32)
+                cv2.polylines(image, [corners], isClosed=True, color=red, thickness=1)
+            for cx, cy in circles:
+                cv2.circle(image, (cx, cy), radius, color=red, thickness=1)
+            
+            # Draw a circle where tracked puck is
+            cv2.circle(image, (x_px.value*args.vis_scale, y_px.value*args.vis_scale), 3*args.vis_scale, color=(255,0,255), thickness=-2)
+            
+            cv2.imshow('Air-Hockey Display', image)
+            cv2.waitKey(1)
+
+
+
+def xy_from_cnn(args, dim, kernel, x_px, y_px, x_cm, y_cm):
+    '''
+    This function:
+       - receives data from SPIF|SpiNNaker through AEstream
+       - estimates puck's (x,y) based on output of SCNN
+       - sends (x,y) to controller
+    '''
+
+    # Create a UDP socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    convolved_img = torch.zeros(1, 1, dim.fl, dim.fw)
+    
+
+    x_px.value = int(dim.fl/2)
+    y_px.value = int(dim.fw/2)
+    old_x_px = x_px.value
+    old_y_px = y_px.value
+    x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
+
+    k_sz = len(kernel)
+
+
+    flag_update_old = False
+    with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_cnn) as convolved:
+                
+        while True:
+
+            convolved_img[0,0,:,:] = convolved.read()
+            conv_out = np.squeeze(convolved_img.numpy())
+            row_indices, column_indices = np.where(conv_out > 0.9)
+            if np.sum(conv_out) > 10:
+                
+                if len(row_indices)>0 and len(column_indices)>0:
+                    flag_update_old = True
+                    x_px.value = int(np.mean(row_indices))+int(k_sz/2)     
+                    y_px.value = int(np.mean(column_indices))+int(k_sz/2)
+            
+            # Send new coordinates only if they are sufficiently different
+            if math.sqrt((x_px.value-old_x_px)**2+(y_px.value-old_y_px)**2)>=1:
+
+                # Estimate coordinates in robot coordinate frame
+                x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
+                message = f"{x_cm.value},{y_cm.value}"
+                sock.sendto(message.encode(), (controller_ip, controller_port))
+                sock.sendto(message.encode(), (plotter_ip, plotter_port))
+
+            if flag_update_old:
+                old_x_px = x_px.value
+                old_y_px = y_px.value
+                flag_update_old = False
+
+
+
+def xy_from_xyp(args, dim, kernel, x_px, y_px, x_cm, y_cm):
+    '''
+    This function:
+       - receives data from SPIF|SpiNNaker through AEstream
+       - estimates puck's (x,y) based on SCNN projections onto 1D XY array
+       - sends (x,y) to controller
+    '''
+
+    # Create a UDP socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    x_px.value = int(dim.fl/2)
+    y_px.value = int(dim.fw/2)
+    old_x_px = x_px.value
+    old_y_px = y_px.value
+    x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
+
+    k_sz = len(kernel)
+    width_cnn = (dim.fl-k_sz+1)
+    height_cnn = (dim.fw-k_sz+1)
+    k_margin = int(k_sz/2)
+
+    with aestream.UDPInput((width_cnn+height_cnn,1), device = 'cpu', port=args.port_xyp) as xy_coords:
+                    
+        while True:
+
+            xy_coords_out = xy_coords.read().numpy()
+            
+            x_array = xy_coords_out[0:width_cnn,0]
+            y_array = np.transpose(xy_coords_out[width_cnn:,0])
+            x_idx = np.where(x_array > 0)
+            y_idx = np.where(y_array > 0)
+            if np.sum(x_idx)>0 and np.sum(y_idx)>0:
+                x_px.value = int(np.mean(x_idx)+k_margin)
+                y_px.value = int(np.mean(y_idx)+k_margin)
+            
+            # Send new coordinates only if they are sufficiently different
+            if math.sqrt((x_px.value-old_x_px)**2+(y_px.value-old_y_px)**2)>=1:
+
+                # Estimate coordinates in robot coordinate frame
+                x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
+                message = f"{x_cm.value},{y_cm.value}"
+                sock.sendto(message.encode(), (controller_ip, controller_port))
+                sock.sendto(message.encode(), (plotter_ip, plotter_port))
+
+            old_x_px = x_px.value
+            old_y_px = y_px.value
+
+
+def plot_live():
+    '''
+    This function:
+       - plots in 'real-time' the current Puck's (x,y) in robot coordinate frame
+
+    '''
+
+    ax1 = None
+    ax2 = None
+
+    # Global lists for x_data and y_data
+    x_data = []
+    y_data = []
+
+    fig, (ax1, ax2) = plt.subplots(2, 1)
+
+    # Define a function to update the plots
+    def animate(i):
+
+        global x_cm, y_cm
+
+        x_data.append(x_cm.value)
+        y_data.append(y_cm.value)
+
+        # Keep only the latest 'max_data_points' data points
+        if len(x_data) > 40:
+            x_data.pop(0)
+            y_data.pop(0)
+
+        # Update the x and y subplots
+        ax1.clear()
+        ax1.plot(x_data, color = 'g')
+        ax1.set_title('Robot X')
+        ax1.set_ylim(-20,20)  # Set Y-axis limits for the first subplot
+        ax2.clear()
+        ax2.plot(y_data, color = 'b')
+        ax2.set_title('Robot Y')
+        ax2.set_ylim(20,80)  # Set Y-axis limits for the second subplot
+        
+    ani = animation.FuncAnimation(fig, animate, interval=1, cache_frame_data=False)
+    plt.tight_layout()
+    plt.show()
+
 
 def parse_args():
 
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
 
-    parser.add_argument('-p0', '--port-0', type= int, help="Port for events", default=3330)
-    parser.add_argument('-p1', '--port-1', type= int, help="Port for events", default=3331)
+    parser.add_argument('-pr', '--port-raw', type= int, help="Port for events", default=3330)
+    parser.add_argument('-pc', '--port-cnn', type= int, help="Port for events", default=3331)
+    parser.add_argument('-pp', '--port-xyp', type= int, help="Port for events", default=3334)
     parser.add_argument('-vs', '--vis-scale', type=int, help="Visualization scale", default=1)
+    parser.add_argument('-md', '--mode', type= str, help="Mode: cnn|xyp", default="xyp")
+    parser.add_argument('-lp', '--live-plot', action='store_true', help="Live Plot")
+
 
     return parser.parse_args()
 
@@ -56,121 +273,33 @@ if __name__ == '__main__':
 
     args = parse_args()
         
-    # Load the Dimensions object from the file
     dim = Dimensions.load_from_file('../common/homdim.pkl')
-
-    
-    # pdb.set_trace()
-
-    cv2.namedWindow('Airhocket Display')
-
-    # Create a UDP socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-    # Stream events from UDP port 3333 (default)
-    black = np.zeros((dim.fl,dim.fw,3))
-    # pdb.set_trace()
-    frame = black
-
-
-    field, line, goals, circles, radius = get_shapes(dim, args.vis_scale)
-    red = (0, 0, 255)
-
-    # pdb.set_trace()
-
-    original_img = torch.zeros(1, 1, dim.fl, dim.fw)
-    convolved_img = torch.zeros(1, 1, dim.fl, dim.fw)
-
-    
-
-    new_avg_row_idx = int(dim.fl/2)
-    new_avg_col_idx = int(dim.fw/2)
-    old_avg_row_idx = new_avg_row_idx
-    old_avg_col_idx = new_avg_col_idx
-    new_robot_x, new_robot_y = from_px_to_cm(dim, new_avg_row_idx, new_avg_col_idx)
     kernel = np.load("../common/kernel.npy")
-    k_sz = len(kernel)
-    print(f"Kernel {k_sz} px")
-    x_k = int(dim.fl/2) - int(k_sz/2)
-    y_k = int(dim.fw/2) - int(k_sz/2)
-    flag_update_old = False
-    with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_0) as original:
-        with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_1) as convolved:
-                    
-            while True:
-
-                # pdb.set_trace()
-                original_img[0,0,:,:] = original.read()
-                orig_out = np.squeeze(original_img.numpy())
-
-                convolved_img[0,0,:,:] = convolved.read()
-                conv_out = np.squeeze(convolved_img.numpy())
-
-                frame = black
-                frame[x_k:x_k+k_sz,y_k:y_k+k_sz,2] = 100*kernel
-                frame[:,:,1] = orig_out
-                frame[int(k_sz/2):dim.fl-int(k_sz/2),int(k_sz/2):dim.fw-int(k_sz/2),0] = conv_out[0:dim.fl-k_sz+1,0:dim.fw-k_sz+1]
-                
-                
-                # half_conv_out = split_and_sum(conv_out[:dim.fl-dim.fl%2,:dim.fw-dim.fw%2], 2)
-                
-
-                # half_conv_out = split_and_sum(conv_out[:dim.fl-dim.fl%2,:dim.fw-dim.fw%2], 2)
-                # hm = max(0,hmean(half_conv_out[half_conv_out>0]))
-                # print(half_conv_out.shape)
-                # row_indices, column_indices = np.where(conv_out > 0.05)
-                # if np.sum(conv_out) > 5:
-                    
-                #     if len(row_indices)>0 and len(column_indices)>0:
-                #         flag_update_old = True
-                #         new_avg_row_idx = int(np.mean(row_indices))+int(k_sz/2)     
-                #         new_avg_col_idx = int(np.mean(column_indices))+int(k_sz/2)
 
 
-                row_indices, column_indices = np.where(conv_out > 0.05)
-                if np.sum(conv_out) > 5:
-                    
-                    if len(row_indices)>0 and len(column_indices)>0:
-                        flag_update_old = True
-                        new_avg_row_idx = int(np.mean(row_indices))+int(k_sz/2)     
-                        new_avg_col_idx = int(np.mean(column_indices))+int(k_sz/2)
-                
-                
-                image = cv2.resize(frame.transpose(1,0,2), (math.ceil(dim.fl*args.vis_scale),math.ceil(dim.fw*args.vis_scale)), interpolation = cv2.INTER_AREA)
-               
+    # Create two separate processes, passing the parameters as arguments
+    if args.mode == "xyp":
+        consolidation = multiprocessing.Process(target=xy_from_xyp, args=(args, dim, kernel,x_px,y_px,x_cm, y_cm,))
+    elif args.mode == "cnn":
+        consolidation = multiprocessing.Process(target=xy_from_cnn, args=(args, dim, kernel,x_px,y_px,x_cm, y_cm,))
+    else:
+        print("Wrong Mode")
+        quit()
+    consolidation.daemon = True
+
+    visualization = multiprocessing.Process(target=visualize, args=(args, dim, kernel,x_px,y_px,))
+    visualization.daemon = True
+
+    if args.live_plot:
+        print("We are plotting in Real Time")
+        live_plotting = multiprocessing.Process(target=plot_live)
+        live_plotting.daemon = True
+        live_plotting.start()
 
 
-                # Send new coordinates only if they are sufficiently different
-                if math.sqrt((new_avg_row_idx-old_avg_row_idx)**2+(new_avg_col_idx-old_avg_col_idx)**2)>=1:
+    consolidation.start()
+    visualization.start()
 
-                    # Estimate coordinates in robot coordinate frame
-                    new_robot_x, new_robot_y = from_px_to_cm(dim, new_avg_row_idx, new_avg_col_idx)
-                    message = f"{new_robot_x},{new_robot_y}"
-                    sock.sendto(message.encode(), (controller_ip, controller_port))
-                    sock.sendto(message.encode(), (plotter_ip, plotter_port))
-
-                    cv2.circle(image, (new_avg_row_idx*args.vis_scale, new_avg_col_idx*args.vis_scale), 3*args.vis_scale, color=(255,0,255), thickness=-2)
-                else:
-                    cv2.circle(image, (old_avg_row_idx*args.vis_scale, old_avg_col_idx*args.vis_scale), 3*args.vis_scale, color=(255,0,255), thickness=-2)
-
-
-                if flag_update_old:
-                    old_avg_row_idx = new_avg_row_idx
-                    old_avg_col_idx = new_avg_col_idx
-                    flag_update_old = False
-
-                # Define the four corners of the field
-                corners = np.array(field, np.int32)
-                cv2.polylines(image, [corners], isClosed=True, color=red, thickness=1)
-
-                for goal in goals:
-                    corners = np.array(goal, np.int32)
-                    cv2.polylines(image, [corners], isClosed=True, color=red, thickness=1)
-
-                for cx, cy in circles:
-                    cv2.circle(image, (cx, cy), radius, color=red, thickness=1)
-                # cv2.line(image, line[0], line[1], color=red, thickness=1)
-                
-                cv2.imshow('Airhocket Display', image)
-                cv2.waitKey(1)
-
+    while True:
+        time.sleep(10)
+    

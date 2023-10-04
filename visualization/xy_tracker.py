@@ -46,7 +46,7 @@ def get_high_idx(data):
     return highest_index
 
 parser = argparse.ArgumentParser(description='Visualizer')
-parser.add_argument('-p1', '--port1', type= int, help="Port for events", default=3331)
+parser.add_argument('-p1', '--port1', type= int, help="Port for events", default=3330)
 parser.add_argument('-p2', '--port2', type= int, help="Port for events", default=3334)
 parser.add_argument('-s', '--scale', type= float, help="Image scale", default=1)
 
