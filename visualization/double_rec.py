@@ -81,7 +81,7 @@ if __name__ == '__main__':
                 try:
                     # pdb.set_trace()
                     now = time.perf_counter()
-                    elapsed_time += now - start_time
+                    elapsed_time = now - start_time
 
                     if elapsed_time > args.acc_time/1000:
                         original_img[0,0,:,:] += stream_0.read()
@@ -159,7 +159,7 @@ if __name__ == '__main__':
         if flag_orig:
             new_frame[:,:,1] = orig_out[:, :, i]
         if flag_conv:
-            new_frame[int(k_sz/2):res_x-int(k_sz/2),int(k_sz/2):res_y-int(k_sz/2),0] = conv_out[0:res_x-k_sz+1,0:res_y-k_sz+1, i]
+            new_frame[int(k_sz/2):res_x-int(k_sz/2),int(k_sz/2):res_y-int(k_sz/2),1:2] = conv_out[0:res_x-k_sz+1,0:res_y-k_sz+1, i]
                     
         # pdb.set_trace()
         if np.sum(new_frame)==0:
