@@ -50,7 +50,7 @@ def create_conn_list(width, height):
 
 def create_inner_conn_list(w, h, npc_x, npc_y):
     conn_list = []    
-    weight = 54
+    weight = 56
     delay = 0.1 # 1 [ms]
     nb_col = math.ceil(w/npc_x)
     nb_row = math.ceil(h/npc_y)
@@ -290,7 +290,7 @@ if __name__ == '__main__':
 
     print("Creating Network ... ")
 
-    cell_params = {'tau_m': args.tau_m/math.log(2),
+    cell_p_fast = {'tau_m': args.tau_m/math.log(2),
                 'tau_syn_E': 0.1,
                 'tau_syn_I': 0.1,
                 'v_rest': -65.0,
@@ -301,13 +301,26 @@ if __name__ == '__main__':
                 'i_offset': 0.0
                 }
 
+    cell_p_slow = {'tau_m': 3*args.tau_m/math.log(2),
+                    'tau_syn_E': 0.1,
+                    'tau_syn_I': 0.1,
+                    'v_rest': -65.0,
+                    'v_reset': -65.0,
+                    'v_thresh': -60.0,
+                    'tau_refrac': 0.0, # 0.1 originally
+                    'cm': 1,
+                    'i_offset': 0.0
+                    }
+
 
 
     p.setup(timestep=1.0, n_boards_required=24)
 
 
     IN_POP_LABEL = "input"
-    CNN_POP_LABEL = "convolution"
+    CNN_FAST_POP_LABEL = "fastcnn"
+    CNN_SLOW_POP_LABEL = "slowcnn"
+    CNN_SUM_POP_LABEL = "sumcnn"
     XYP_POP_LABEL = "xyproj"
 
     celltype = p.IF_curr_exp
@@ -320,36 +333,51 @@ if __name__ == '__main__':
                                   sub_width=SUB_WIDTH, sub_height=SUB_HEIGHT, 
                                   chip_coords=CHIP), label=IN_POP_LABEL)
 
-    # Setting up Convolutional Layer
-    convolution = p.ConvolutionConnector(kernel_weights=kernel)
-    cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**cell_params),
-                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=CNN_POP_LABEL)
+    # Setting up Fast Convolutional Layer
+    conv_fast = p.ConvolutionConnector(kernel_weights=kernel)
+    cnn_fast_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**cell_p_fast),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=CNN_FAST_POP_LABEL)
+
+    # Setting up Slow Convolutional Layer
+    conv_slow = p.ConvolutionConnector(kernel_weights=kernel)
+    cnn_slow_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**cell_p_slow),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=CNN_SLOW_POP_LABEL)
 
 
     # Projection from SPIF virtual to CNN population
-    p.Projection(p_spif_virtual, cnn_pop, convolution, p.Convolution())
+    p.Projection(p_spif_virtual, cnn_fast_pop, conv_fast, p.Convolution())
+    p.Projection(p_spif_virtual, cnn_slow_pop, conv_slow, p.Convolution())
+
+
+    sum_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**cell_p_slow),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=CNN_SUM_POP_LABEL)
+
+    p.Projection(cnn_fast_pop, sum_pop, p.OneToOneConnector(),synapse_type=p.StaticSynapse(weight=1000, delay=0.1))
+    p.Projection(cnn_slow_pop, sum_pop, p.OneToOneConnector(),synapse_type=p.StaticSynapse(weight=1000, delay=0.1))
 
     # Adding XY population
     if full_cnn_xy:
+        pass
         # Setting XY Projection Layer
-        xyp_pop = p.Population(OUT_WIDTH + OUT_HEIGHT, celltype(**cell_params), label=XYP_POP_LABEL)
-        conn_list = create_inner_conn_list(OUT_WIDTH, OUT_HEIGHT, NPC_X, NPC_Y)
-        cell_conn = p.FromListConnector(conn_list, safe=True) 
-        p.Projection(cnn_pop, xyp_pop, cell_conn, receptor_type='excitatory')
+        # xyp_pop = p.Population(OUT_WIDTH + OUT_HEIGHT, celltype(**cell_p_fast), label=XYP_POP_LABEL)
+        # conn_list = create_inner_conn_list(OUT_WIDTH, OUT_HEIGHT, NPC_X, NPC_Y)
+        # cell_conn = p.FromListConnector(conn_list, safe=True) 
+        # p.Projection(cnn_fast_pop, xyp_pop, cell_conn, receptor_type='excitatory')
 
     # Setting up SPIF Output
     if full_cnn_xy:
-        conn_xyp = p.external_devices.SPIFLiveSpikesConnection([XYP_POP_LABEL], SPIF_IP_A, SPIF_PORT)
-        conn_xyp.add_receive_callback(XYP_POP_LABEL, recv_nid_rc)
-        spif_xyp_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-            database_notify_port_num=conn_xyp.local_port, chip_coords=CHIP), label="xyp_output")
-        p.external_devices.activate_live_output_to(xyp_pop, spif_xyp_output)
+        pass
+        # conn_xyp = p.external_devices.SPIFLiveSpikesConnection([XYP_POP_LABEL], SPIF_IP_A, SPIF_PORT)
+        # conn_xyp.add_receive_callback(XYP_POP_LABEL, recv_nid_rc)
+        # spif_xyp_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+        #     database_notify_port_num=conn_xyp.local_port, chip_coords=CHIP), label="xyp_output")
+        # p.external_devices.activate_live_output_to(xyp_pop, spif_xyp_output)
     else:
-        conn_cnn = p.external_devices.SPIFLiveSpikesConnection([CNN_POP_LABEL], SPIF_IP_A, SPIF_PORT)
-        conn_cnn.add_receive_callback(CNN_POP_LABEL, recv_nid)
+        conn_cnn = p.external_devices.SPIFLiveSpikesConnection([CNN_SUM_POP_LABEL], SPIF_IP_A, SPIF_PORT)
+        conn_cnn.add_receive_callback(CNN_SUM_POP_LABEL, recv_nid)
         spif_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
             database_notify_port_num=conn_cnn.local_port, chip_coords=CHIP), label="cnn_output")
-        p.external_devices.activate_live_output_to(cnn_pop, spif_cnn_output)
+        p.external_devices.activate_live_output_to(sum_pop, spif_cnn_output)
 
 
     try:
