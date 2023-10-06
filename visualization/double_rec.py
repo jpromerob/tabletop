@@ -151,15 +151,16 @@ if __name__ == '__main__':
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     out = cv2.VideoWriter(output_file, fourcc, frame_rate, (res_x, res_y))
 
-    orig_out = orig_out.transpose((1, 2, 0))
-    conv_out = conv_out.transpose((1, 2, 0))
+    # orig_out = orig_out.transpose((1, 2, 0))
+    # conv_out = conv_out.transpose((1, 2, 0))
 
     # Iterate through the frames and write to the video
     for i in range(max_nb_frames):
         if flag_orig:
-            new_frame[:,:,1] = orig_out[:, :, i]
+            new_frame[:,:,1] = orig_out[i,:, :]
         if flag_conv:
-            new_frame[int(k_sz/2):res_x-int(k_sz/2),int(k_sz/2):res_y-int(k_sz/2),1:2] = conv_out[0:res_x-k_sz+1,0:res_y-k_sz+1, i]
+            # pdb.set_trace()
+            new_frame[int(k_sz/2):res_x-int(k_sz/2),int(k_sz/2):res_y-int(k_sz/2),2] = conv_out[i,0:res_x-k_sz+1,0:res_y-k_sz+1]
                     
         # pdb.set_trace()
         if np.sum(new_frame)==0:

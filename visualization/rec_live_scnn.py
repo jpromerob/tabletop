@@ -73,8 +73,10 @@ def visualize(args, dim, kernel, x_px, y_px):
     win_x_loc = int((get_monitors()[0].width-int(1.5*dim.fl*args.vis_scale))/2)
     win_y_loc = int((get_monitors()[0].height-dim.fw*args.vis_scale)/2)
 
-    black = np.zeros((dim.fl,dim.fw,3))
-    frame = black
+    nb_frames = 2000
+    black = np.zeros((dim.fl,dim.fw))
+    frame_raw = np.zeros((nb_frames, dim.fl,dim.fw))
+    frame_xy = np.zeros((nb_frames, dim.fl,dim.fw))
 
     field, line, goals, circles, radius = get_shapes(dim, args.vis_scale)
     red = (0, 0, 255)
@@ -83,43 +85,65 @@ def visualize(args, dim, kernel, x_px, y_px):
     x_k = int(dim.fl/2) - int(k_sz/2)
     y_k = int(dim.fw/2) - int(k_sz/2)
     
+    print("Start video")
+    start_t = time.time()
     with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=args.port_raw) as original:
                     
-        start_time = time.time()
-        while True:
-            
-            elapsed_time = (time.time() - start_time)
-            if elapsed_time < 1/fps:
-                continue
-            
+        frame_counter = -1
+        while frame_counter < nb_frames:
+            frame_counter += 1
+
             # Read Raw data
             orig_out = np.squeeze(original.read().numpy())
 
             # Visualize raw data
-            frame = black
-            if draw_kernel:
-                frame[x_k:x_k+k_sz,y_k:y_k+k_sz,2] = 100*kernel
-            frame[:,:,1] = orig_out
-            image = cv2.resize(frame.transpose(1,0,2), (math.ceil(dim.fl*args.vis_scale),math.ceil(dim.fw*args.vis_scale)), interpolation = cv2.INTER_AREA)
+            frame_xy[frame_counter, x_px.value-2:x_px.value+3,y_px.value-2:y_px.value+3] = np.ones((2*2+1,2*2+1))
             
+            frame_raw[frame_counter, :,:] = orig_out
 
-            # Super Impose Play Area Features
-            corners = np.array(field, np.int32)
-            cv2.polylines(image, [corners], isClosed=True, color=red, thickness=1)
-            for goal in goals:
-                corners = np.array(goal, np.int32)
-                cv2.polylines(image, [corners], isClosed=True, color=red, thickness=1)
-            for cx, cy in circles:
-                cv2.circle(image, (cx, cy), radius, color=red, thickness=1)
-            
-            # Draw a circle where tracked puck is
-            cv2.circle(image, (x_px.value*args.vis_scale, y_px.value*args.vis_scale), 3*args.vis_scale, color=(255,0,255), thickness=-2)
-            
-            cv2.imshow(window_title, image)
-            subprocess.run(['wmctrl', '-r', window_title, '-e', f'0,{win_x_loc},{win_y_loc},-1,-1'])
-            cv2.waitKey(1)
+    end_t = time.time()
+    print(f"All frames saved! (after {end_t-start_t}[s])")
 
-            start_time = time.time()
+    output_file = "my_video.avi"
+
+    # Define video properties
+    frame_rate = 25  # Frames per second (adjust as needed)
+    frame_duration_ms = 40  # Duration of each frame in milliseconds
+
+    # Define the codec and create VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter(output_file, fourcc, frame_rate, (args.vis_scale*dim.fl, args.vis_scale*dim.fw))
+
+    # orig_out = orig_out.transpose((1, 2, 0))
+    # conv_out = conv_out.transpose((1, 2, 0))
+    
+    real_output = np.zeros((dim.fl,dim.fw,3), dtype=np.uint8)
+    for i in range(nb_frames):
+
+        real_output[:,:,1] = frame_raw[i, :, :]
+        real_output[:,:,2] = frame_xy[i, :, :]
+
+        for _ in range(frame_duration_ms // (1000 // frame_rate)):
+            out.write(real_output.transpose(1,0,2))
+
+
+    out.release()
+    print("Video out!")
+    # # Iterate through the frames and write to the video
+    # for i in range(max_nb_frames):
+    #     if flag_orig:
+    #         new_frame[:,:,1] = orig_out[:, :, i]
+    #     if flag_conv:
+    #         new_frame[int(k_sz/2):res_x-int(k_sz/2),int(k_sz/2):res_y-int(k_sz/2),1:2] = conv_out[0:res_x-k_sz+1,0:res_y-k_sz+1, i]
+                    
+
+    #     # Write the frame to the video
+    #     for _ in range(frame_duration_ms // (1000 // frame_rate)):
+    #         out.write(new_frame.transpose(1,0,2))
+
+    # # Release the VideoWriter object
+    # out.release()
+    # os.system(f"mv {output_file} videos/")
 
 
 def xy_from_cnn(args, dim, kernel, x_px, y_px, x_cm, y_cm):
