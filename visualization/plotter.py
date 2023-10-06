@@ -6,8 +6,8 @@ import multiprocessing
 from multiprocessing import Value  # Import Value for shared variable
 
 # Receiver IP and port
-receiver_ip = "172.16.222.30"
-receiver_port = 4000
+receiver_ip = "172.16.222.199"
+receiver_port = 1987
 
 # Maximum number of data points to display on the X-axis
 max_data_points = 100
@@ -87,9 +87,12 @@ if __name__ == '__main__':
     # Create a figure with two subplots
     fig, (ax1, ax2) = plt.subplots(2, 1)
 
+    # Customize the figure window size
+    fig.set_size_inches(5.6,7.2)  # Set size (8 inches width, 6 inches height)
+
+
     # Set up the animation with cache_frame_data=False to suppress the warning
     ani = animation.FuncAnimation(fig, animate, interval=1, cache_frame_data=False)
 
     # Show the animated plot
-    plt.tight_layout()
     plt.show()
