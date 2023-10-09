@@ -153,6 +153,7 @@ def xy_from_cnn(args, dim, kernel, x_px, y_px, x_cm, y_cm):
             # Estimate coordinates in robot coordinate frame
             x_cm.value, y_cm.value = from_px_to_cm(dim, x_px.value, y_px.value)
             message = f"{x_cm.value},{y_cm.value}"
+            print(message)
             sock.sendto(message.encode(), (controller_ip, controller_port))
             sock.sendto(message.encode(), (plotter_ip, plotter_port))
             sock.sendto(message.encode(), (controller_ip, plotter_port))

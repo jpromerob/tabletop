@@ -62,6 +62,7 @@ def receive_data():
 
     while True:
         data, _ = sock.recvfrom(1024)
+        print(data)
         decoded_data = data.decode()
         current_x, current_y = map(float, decoded_data.split(','))
 

@@ -3,4 +3,5 @@ __pycache__/
 *.avi
 *.zip
 videos
-recordings/
+recordings
+*.dat
