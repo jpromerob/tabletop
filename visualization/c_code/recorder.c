@@ -8,8 +8,9 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <math.h>
+#include <stdbool.h>
 
-#define ACC_TIME 0.005
+#define ACC_TIME 0.001
 
 #define WINDOW_WIDTH 280
 #define WINDOW_HEIGHT 181
@@ -17,21 +18,27 @@
 
 #define NB_COLS 280
 #define NB_ROWS 181
+#define NB_FRAMES 5000
 
 #define BUFFER_SIZE 1024 * 256
 #define PORT_UDP_RAW 3330
 #define PORT_UDP_CNN 3331
 
-int input_raw_mat[NB_COLS][NB_ROWS];
-int output_raw_mat[NB_COLS][NB_ROWS];
-int shared_raw_mat[NB_COLS][NB_ROWS];
-int input_cnn_mat[NB_COLS][NB_ROWS];
-int output_cnn_mat[NB_COLS][NB_ROWS];
-int shared_cnn_mat[NB_COLS][NB_ROWS];
 int emptyMatrix[NB_COLS][NB_ROWS];
+int input_raw_mat[NB_COLS][NB_ROWS]; // where incoming raw data is stored
+int visual_raw_mat[NB_COLS][NB_ROWS]; // matrix used by render (raw)
+int shared_raw_mat[NB_COLS][NB_ROWS]; // matrix shared between udp receiver (raw) and render|saver
+int input_cnn_mat[NB_COLS][NB_ROWS]; // where incoming scnn data is stored
+int visual_cnn_mat[NB_COLS][NB_ROWS]; // matrix used by render (scnn)
+int shared_cnn_mat[NB_COLS][NB_ROWS]; // matrix shared between udp receiver (scnn) and render|saver
+
+int video_raw_mat[NB_FRAMES][NB_COLS][NB_ROWS];
+int video_cnn_mat[NB_FRAMES][NB_COLS][NB_ROWS];
+
 int x_cm = 0;
 int y_cm = 0;
 int scale = 1;
+bool is_live = false;
 
 pthread_mutex_t coordinates = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t raw_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -40,6 +47,19 @@ pthread_mutex_t cnn_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Function to calculate Euclidean distance between two points
 double get_distance(double x1, double y1, double x2, double y2) {
     return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
+}
+
+
+// Function to save video_raw_mat data to a file
+void saveVideoData(const char *filename, int video_mat[NB_FRAMES][NB_COLS][NB_ROWS]) {
+    FILE *file = fopen(filename, "wb");
+    if (file == NULL) {
+        perror("Failed to open file for writing");
+        exit(1);
+    }
+
+    fwrite(video_mat, sizeof(int), NB_FRAMES * NB_COLS * NB_ROWS, file);
+    fclose(file);
 }
 
 void* updateRawMat(void* arg) {
@@ -212,6 +232,10 @@ void* updateCnnMat(void* arg) {
 // Function to render the entire matrix as a texture
 void* renderMatrix(void* arg) {
 
+    if(!is_live){
+        return NULL;
+    }
+    printf("Live rendering ...");
 
     int black = 0xFF000000;
     int green = 0xFF006600;
@@ -239,11 +263,11 @@ void* renderMatrix(void* arg) {
 
         // Acquire mutex lock | get data | release mutex lock
         pthread_mutex_lock(&raw_mutex);
-        memcpy(output_raw_mat, shared_raw_mat, sizeof(int) * NB_COLS * NB_ROWS);
+        memcpy(visual_raw_mat, shared_raw_mat, sizeof(int) * NB_COLS * NB_ROWS);
         pthread_mutex_unlock(&raw_mutex);
 
         pthread_mutex_lock(&cnn_mutex);
-        memcpy(output_cnn_mat, shared_cnn_mat, sizeof(int) * NB_COLS * NB_ROWS);
+        memcpy(visual_cnn_mat, shared_cnn_mat, sizeof(int) * NB_COLS * NB_ROWS);
         pthread_mutex_unlock(&cnn_mutex);
 
 
@@ -255,7 +279,7 @@ void* renderMatrix(void* arg) {
         int avg_idx_y = 0;
         for (int y = 0; y < NB_ROWS; y++) {
             for (int x = 0; x < NB_COLS; x++) {
-                if(output_cnn_mat[x][y]>0){
+                if(visual_cnn_mat[x][y]>0){
                     sum_idx_x+=x;
                     sum_idx_y+=y;
                     count_ones++;
@@ -283,14 +307,14 @@ void* renderMatrix(void* arg) {
             for (int x = 0; x < NB_COLS; x++) {
                 int index = y * NB_COLS + x;
                 color = black;
-                if (output_raw_mat[x][y] == 1) {
+                if (visual_raw_mat[x][y] == 1) {
                     // Set color to green (0xFF00FF00) if the matrix value is 1
                     color = green;
                 } 
                 if (get_distance(x, y, avg_idx_x, avg_idx_y)<=3){
                     color = red;
                 }
-                if (output_cnn_mat[x][y] == 1) {
+                if (visual_cnn_mat[x][y] == 1) {
                     // Set color to green (0xFF00FF00) if the matrix value is 1
                     color = yellow;
                 } 
@@ -316,43 +340,85 @@ void* renderMatrix(void* arg) {
     }
 }
 
-void* sendCoordinates(void* arg) {
+void* saveVideo(void* arg) {
 
-    while(1){
-        usleep(1000000);
-        // @TODO: transform x_px|y_px into x_cm|y_cm and send over udp (for plotter)
+    if(is_live){
+        return NULL;
     }
+    printf("Video Recording ...");
+
+    int frame_count = 0;
+    while(1){
+        pthread_mutex_lock(&raw_mutex);
+        memcpy(visual_raw_mat, shared_raw_mat, sizeof(int) * NB_COLS * NB_ROWS);
+        pthread_mutex_unlock(&raw_mutex);
+        
+        pthread_mutex_lock(&cnn_mutex);
+        memcpy(visual_cnn_mat, shared_cnn_mat, sizeof(int) * NB_COLS * NB_ROWS);
+        pthread_mutex_unlock(&cnn_mutex);
+
+        memcpy(video_raw_mat[frame_count], visual_raw_mat, sizeof(visual_raw_mat));
+        memcpy(video_cnn_mat[frame_count], visual_cnn_mat, sizeof(visual_cnn_mat));
+
+        usleep(1000);
+        if(frame_count%100==0){
+            printf("%d frames\n", frame_count);
+        }
+        frame_count++;
+        
+        if(frame_count==NB_FRAMES){
+            printf("\nVideo Saved!\n");
+            break;
+        }
+    }
+    printf("End of Recording ...\n");   
+    const char *raw_vid_fn = "raw_video.dat";
+    saveVideoData(raw_vid_fn, video_raw_mat);
+    const char *cnn_vid_fn = "cnn_video.dat";
+    saveVideoData(cnn_vid_fn, video_cnn_mat);
+    printf("File saved ...\n");   
 
 }
 
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
 
-    if (argc != 2) {
-        printf("Usage: %s <scale>\n", argv[0]);
+    if (argc != 3) {
+        printf("Usage: %s <mode> <scale>\n", argv[0]);
         return 1;
     }
 
-    // Convert the command-line arguments (strings) to integers
-    scale = atoi(argv[1]);
+    char *str = argv[1];
+    scale = atoi(argv[2]);
+
+
+    if (strcmp(str, "live") == 0) {
+        is_live = true;
+    } else if (strcmp(str, "video") == 0) {
+        is_live = false;
+    } else {
+        printf("Unknown mode\n");
+        return 0;
+    }
+
 
     memset(input_raw_mat, 0, sizeof(int) * NB_COLS * NB_ROWS);
     memset(shared_raw_mat, 0, sizeof(int) * NB_COLS * NB_ROWS);
     memset(emptyMatrix, 0, sizeof(int) * NB_COLS * NB_ROWS);
 
-    pthread_t updateRawThread, updateCnnThread, renderThread, senderThread;
+    pthread_t updateRawThread, updateCnnThread, renderThread, videoThread;
 
     // Create threads
     pthread_create(&updateRawThread, NULL, updateRawMat, NULL);
     pthread_create(&updateCnnThread, NULL, updateCnnMat, NULL);
     pthread_create(&renderThread, NULL, renderMatrix, NULL);
-    pthread_create(&senderThread, NULL, sendCoordinates, NULL);
+    pthread_create(&videoThread, NULL, saveVideo, NULL);
 
     // Wait for threads to finish (this will never happen in this example)
     pthread_join(updateRawThread, NULL);
     pthread_join(updateCnnThread, NULL);
     pthread_join(renderThread, NULL);
-    pthread_join(senderThread, NULL);
+    pthread_join(videoThread, NULL);
 
     // Clean up mutex
     pthread_mutex_destroy(&coordinates);
