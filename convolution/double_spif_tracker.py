@@ -212,7 +212,7 @@ if __name__ == '__main__':
     print("Setting machines up ... ")
     CFG_FILE = f"spynnaker_{args.board}.cfg"
     SPIF_IP_A = "172.16.223.2"
-    SPIF_IP_B = "172.16.223.16"
+    SPIF_IP_B = "172.16.223.130" # SPIF-16 CHIP (16,8)
 
 
     print("Generating Kernel ... ")
@@ -247,7 +247,8 @@ if __name__ == '__main__':
     SPIF_PORT = 3332
     POP_LABEL = "target"
     RUN_TIME = 1000*60*args.runtime
-    CHIP = (0, 0)
+    CHIP_A = (0, 0)
+    CHIP_B = (16, 8)
 
 
     P_SHIFT = 15
@@ -259,7 +260,7 @@ if __name__ == '__main__':
     global sock 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    def recv_nid(label, spikes):
+    def forward_cnn_data(label, spikes):
         global sock
         data = b""
         np_spikes = np.array(spikes)
@@ -272,17 +273,13 @@ if __name__ == '__main__':
         sock.sendto(data, (MY_PC_IP, MY_PC_PORT_CNN))
 
 
-    def recv_nid_rc(label, spikes):
+    def forward_xyp_data(label, spikes):
         global sock
         data = b""
         np_spikes = np.array(spikes)
         for i in range(np_spikes.shape[0]):    
             x = int(np_spikes[i]) % (OUT_WIDTH+OUT_HEIGHT)
             y = int(int(np_spikes[i]) / (OUT_WIDTH+OUT_HEIGHT))
-            # if(x<OUT_WIDTH):
-            #     print(f"x:{x}")
-            # else:
-            #     print(f"\t\ty:{x-OUT_WIDTH}")
             polarity = 1
             packed = (NO_TIMESTAMP + (polarity << P_SHIFT) + (y << Y_SHIFT) + (x << X_SHIFT))
             data += pack("<I", packed)
@@ -306,7 +303,8 @@ if __name__ == '__main__':
     p.setup(timestep=1.0, n_boards_required=24)
 
 
-    IN_POP_LABEL = "input"
+    IN_POP_LABEL_A = "input_a"
+    IN_POP_LABEL_B = "input_b"
     CNN_POP_LABEL = "convolution"
     XYP_POP_LABEL = "xyproj"
 
@@ -315,10 +313,15 @@ if __name__ == '__main__':
 
 
     # Setting up SPIF Input
-    p_spif_virtual = p.Population(WIDTH * HEIGHT, p.external_devices.SPIFRetinaDevice(
-                                  pipe=0, width=WIDTH, height=HEIGHT,
-                                  sub_width=SUB_WIDTH, sub_height=SUB_HEIGHT, 
-                                  chip_coords=CHIP), label=IN_POP_LABEL)
+    p_spif_virtual_a = p.Population(WIDTH * HEIGHT, p.external_devices.SPIFRetinaDevice(
+                                    pipe=0, width=WIDTH, height=HEIGHT,
+                                    sub_width=SUB_WIDTH, sub_height=SUB_HEIGHT, 
+                                    chip_coords=CHIP_A), label=IN_POP_LABEL_A)
+
+    # p_spif_virtual_b = p.Population(WIDTH * HEIGHT, p.external_devices.SPIFRetinaDevice(
+    #                                 pipe=0, width=WIDTH, height=HEIGHT,
+    #                                 sub_width=SUB_WIDTH, sub_height=SUB_HEIGHT, 
+    #                                 chip_coords=CHIP_B), label=IN_POP_LABEL_B)
 
     # Setting up Convolutional Layer
     convolution = p.ConvolutionConnector(kernel_weights=kernel)
@@ -327,7 +330,7 @@ if __name__ == '__main__':
 
 
     # Projection from SPIF virtual to CNN population
-    p.Projection(p_spif_virtual, cnn_pop, convolution, p.Convolution())
+    p.Projection(p_spif_virtual_a, cnn_pop, convolution, p.Convolution())
 
     # Adding XY population
     if full_cnn_xy:
@@ -339,16 +342,22 @@ if __name__ == '__main__':
 
     # Setting up SPIF Output
     if full_cnn_xy:
-        conn_xyp = p.external_devices.SPIFLiveSpikesConnection([XYP_POP_LABEL], SPIF_IP_A, SPIF_PORT)
-        conn_xyp.add_receive_callback(XYP_POP_LABEL, recv_nid_rc)
+        conn_cnn = p.external_devices.SPIFLiveSpikesConnection([CNN_POP_LABEL], SPIF_IP_A, SPIF_PORT)
+        conn_cnn.add_receive_callback(CNN_POP_LABEL, forward_cnn_data)
+        spif_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+            database_notify_port_num=conn_cnn.local_port, chip_coords=CHIP_A), label="cnn_output")
+        p.external_devices.activate_live_output_to(cnn_pop, spif_cnn_output)
+
+        conn_xyp = p.external_devices.SPIFLiveSpikesConnection([XYP_POP_LABEL], SPIF_IP_B, SPIF_PORT)
+        conn_xyp.add_receive_callback(XYP_POP_LABEL, forward_xyp_data)
         spif_xyp_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-            database_notify_port_num=conn_xyp.local_port, chip_coords=CHIP), label="xyp_output")
+            database_notify_port_num=conn_xyp.local_port, chip_coords=CHIP_B), label="xyp_output")
         p.external_devices.activate_live_output_to(xyp_pop, spif_xyp_output)
     else:
         conn_cnn = p.external_devices.SPIFLiveSpikesConnection([CNN_POP_LABEL], SPIF_IP_A, SPIF_PORT)
-        conn_cnn.add_receive_callback(CNN_POP_LABEL, recv_nid)
+        conn_cnn.add_receive_callback(CNN_POP_LABEL, forward_cnn_data)
         spif_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-            database_notify_port_num=conn_cnn.local_port, chip_coords=CHIP), label="cnn_output")
+            database_notify_port_num=conn_cnn.local_port, chip_coords=CHIP_A), label="cnn_output")
         p.external_devices.activate_live_output_to(cnn_pop, spif_cnn_output)
 
 
