@@ -50,7 +50,7 @@ def create_conn_list(width, height):
 
 def create_inner_conn_list(w, h, npc_x, npc_y):
     conn_list = []    
-    weight = 54
+    weight = 56
     delay = 0.1 # 1 [ms]
     nb_col = math.ceil(w/npc_x)
     nb_row = math.ceil(h/npc_y)
@@ -189,11 +189,11 @@ def parse_args():
     parser.add_argument('-ip', '--ip', type= str, help="IP out", default="172.16.222.199")
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
-    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.80) # 0.5 xyp | 0.8 cnn
-    parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=4.0) # __ xyp | 4 cnn
+    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=1.0) # 0.5 xyp | 0.8 cnn
+    parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=3.0) # __ xyp | 4 cnn
     parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=2)
-    parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [s]", default=240)
-    parser.add_argument('-md', '--mode', type=str, help="SPIF Out: cnn or xyp", default="cnn")
+    parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=240)
+    parser.add_argument('-md', '--mode', type=str, help="SPIF Out: cnn or xyp", default="xyp")
     return parser.parse_args()
 
 if __name__ == '__main__':
