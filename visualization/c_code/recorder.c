@@ -10,7 +10,8 @@
 #include <math.h>
 #include <stdbool.h>
 
-#define ACC_TIME 0.001
+#define XYP_TIME 0.000010
+#define COLOR_HIGH 1
 
 #define WINDOW_WIDTH 280
 #define WINDOW_HEIGHT 181
@@ -23,6 +24,7 @@
 #define BUFFER_SIZE 1024 * 256
 #define PORT_UDP_RAW 3330
 #define PORT_UDP_CNN 3331
+#define PORT_UDP_XYP 3334
 
 int emptyMatrix[NB_COLS][NB_ROWS];
 int input_raw_mat[NB_COLS][NB_ROWS]; // where incoming raw data is stored
@@ -35,12 +37,16 @@ int shared_cnn_mat[NB_COLS][NB_ROWS]; // matrix shared between udp receiver (scn
 int video_raw_mat[NB_FRAMES][NB_COLS][NB_ROWS];
 int video_cnn_mat[NB_FRAMES][NB_COLS][NB_ROWS];
 
+float acc_time = 0.001000;
+int x_px = 0;
+int y_px = 0;
 int x_cm = 0;
 int y_cm = 0;
 int scale = 1;
 bool is_live = false;
+bool is_neural = false;
 
-pthread_mutex_t coordinates = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t xyp_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t raw_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t cnn_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -62,7 +68,7 @@ void saveVideoData(const char *filename, int video_mat[NB_FRAMES][NB_COLS][NB_RO
     fclose(file);
 }
 
-void* updateRawMat(void* arg) {
+void* updateRaw(void* arg) {
     int sockfd;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
@@ -73,7 +79,7 @@ void* updateRawMat(void* arg) {
         perror("socket");
         exit(1);
     } else {
-        printf("Socket correctly created\n");
+        printf("Socket for RAW correctly created\n");
     }
 
     // Initialize server address
@@ -88,7 +94,7 @@ void* updateRawMat(void* arg) {
         exit(1);
     }
 
-    printf("Listening for data...\n");
+    printf("Listening for RAW data...\n");
 
     struct timespec start_time, current_time;
 
@@ -120,7 +126,7 @@ void* updateRawMat(void* arg) {
                 int x = (packed_data >> 16) & 0x00003FFF;
                 int y = (packed_data >> 0) & 0x00003FFF;
 
-                input_raw_mat[x][y] = 1;
+                input_raw_mat[x][y] += 1;
             }
             
             // Get the current time
@@ -130,7 +136,7 @@ void* updateRawMat(void* arg) {
             elapsed_time = (current_time.tv_sec - start_time.tv_sec) +
                         (current_time.tv_nsec - start_time.tv_nsec) / 1e9;
             
-        } while (elapsed_time < ACC_TIME); // Repeat until 1ms has elapsed
+        } while (elapsed_time < acc_time); // Repeat until 1ms has elapsed
         
         // Acquire mutex lock | update data | release mutex lock
         pthread_mutex_lock(&raw_mutex);        
@@ -146,7 +152,8 @@ void* updateRawMat(void* arg) {
     return NULL;
 }
 
-void* updateCnnMat(void* arg) {
+void* updateXyp(void* arg){
+
     int sockfd;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
@@ -157,7 +164,103 @@ void* updateCnnMat(void* arg) {
         perror("socket");
         exit(1);
     } else {
-        printf("Socket correctly created\n");
+        printf("Socket for XYP correctly created\n");
+    }
+
+    // Initialize server address
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(PORT_UDP_XYP); // Use the same port as in Python
+
+    // Bind socket to server address
+    if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("bind");
+        exit(1);
+    }
+
+    printf("Listening for XYP data...\n");
+
+    struct timespec start_time, current_time;
+
+    while (1) {
+        double elapsed_time;
+    
+        // Get the current time
+        clock_gettime(CLOCK_MONOTONIC, &start_time);
+        
+        int recv_counter = 0;
+        // Perform the operation repeatedly until 1ms (0.001 seconds) has elapsed
+        do {
+            ssize_t recv_len = recvfrom(sockfd, buffer, sizeof(buffer), 0,
+                                    (struct sockaddr *)&client_addr, &client_addr_len);
+
+            if (recv_len < 0) {
+                perror("recvfrom");
+                exit(1);
+            } else {
+                recv_counter++;
+            }
+
+            int x = 0;
+            int y = 0;
+            int x_counter = 0;
+            int y_counter = 0;
+            // Assuming the received data is packed as little-endian 32-bit integers
+            for (int i = 0; i < recv_len; i += 4) {
+                unsigned int packed_data;
+                memcpy(&packed_data, &buffer[i], 4);
+
+                // Extract x and y values
+                int xy_val = (packed_data >> 16) & 0x00003FFF;
+                if(xy_val < WINDOW_WIDTH-K_SZ+1){
+                    x += xy_val+K_SZ/2;
+                    x_counter++;
+                } else {
+                    y += xy_val-(WINDOW_WIDTH-K_SZ+1)+K_SZ/2;
+                    y_counter++;
+                }
+
+            }
+            pthread_mutex_lock(&xyp_mutex);  
+            if(x_counter>0 && y_counter>0){
+                x_px = x/x_counter;
+                y_px = y/y_counter;
+            }
+            // printf("(%d,%d)\n", x_px, y_px);
+            pthread_mutex_unlock(&xyp_mutex);  
+            
+            
+            // Get the current time
+            clock_gettime(CLOCK_MONOTONIC, &current_time);
+            
+            // Calculate the elapsed time in seconds
+            elapsed_time = (current_time.tv_sec - start_time.tv_sec) +
+                        (current_time.tv_nsec - start_time.tv_nsec) / 1e9;
+            
+        } while (elapsed_time < XYP_TIME); // Repeat until 1ms has elapsed
+        
+
+    }
+
+    close(sockfd);
+
+    return NULL;
+
+}
+
+void* updateCnn(void* arg) {
+    int sockfd;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
+    unsigned char buffer[BUFFER_SIZE];
+
+    // Create UDP socket
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+        perror("socket");
+        exit(1);
+    } else {
+        printf("Socket for CNN correctly created\n");
     }
 
     // Initialize server address
@@ -172,7 +275,7 @@ void* updateCnnMat(void* arg) {
         exit(1);
     }
 
-    printf("Listening for data...\n");
+    printf("Listening for CNN data...\n");
 
     struct timespec start_time, current_time;
 
@@ -204,7 +307,7 @@ void* updateCnnMat(void* arg) {
                 int x = (K_SZ/2)+ ((packed_data >> 16) & 0x00003FFF);
                 int y = (K_SZ/2)+ ((packed_data >> 0) & 0x00003FFF);
 
-                input_cnn_mat[x][y] = 1;
+                input_cnn_mat[x][y] += 1;
             }
             
             // Get the current time
@@ -214,7 +317,7 @@ void* updateCnnMat(void* arg) {
             elapsed_time = (current_time.tv_sec - start_time.tv_sec) +
                         (current_time.tv_nsec - start_time.tv_nsec) / 1e9;
             
-        } while (elapsed_time < ACC_TIME); // Repeat until 1ms has elapsed
+        } while (elapsed_time < acc_time); // Repeat until 1ms has elapsed
         
         // Acquire mutex lock | update data | release mutex lock
         pthread_mutex_lock(&cnn_mutex);        
@@ -235,19 +338,22 @@ void* renderMatrix(void* arg) {
     if(!is_live){
         return NULL;
     }
-    printf("Live rendering ...");
 
-    int black = 0xFF000000;
-    int green = 0xFF006600;
-    int blue = 0xFF0000FF;
-    int red = 0xFFFF0000;
-    int yellow = 0xFFFFFF00;
+    int base = 0xFF000000;
+    int black = 0x00000000;
+    int green = 0x00006600;
+    int blue = 0x000000FF;
+    int red = 0x00FF0000;
+    int yellow = 0x00FFFF00;
 
     SDL_Init(SDL_INIT_VIDEO);
 
     SDL_Window* window = SDL_CreateWindow("Air Hockey", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, scale*WINDOW_WIDTH, scale*WINDOW_HEIGHT, SDL_WINDOW_SHOWN);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     SDL_Texture* matrixTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, NB_COLS, NB_ROWS);
+
+    int local_x_px = 0;
+    int local_y_px = 0;
 
     while (1) {
         SDL_Event e;
@@ -272,26 +378,38 @@ void* renderMatrix(void* arg) {
 
 
 
-        int sum_idx_x = 0;
-        int sum_idx_y = 0;
-        int count_ones = 0;
-        int avg_idx_x = 0;
-        int avg_idx_y = 0;
-        for (int y = 0; y < NB_ROWS; y++) {
-            for (int x = 0; x < NB_COLS; x++) {
-                if(visual_cnn_mat[x][y]>0){
-                    sum_idx_x+=x;
-                    sum_idx_y+=y;
-                    count_ones++;
+        if(is_neural){
+            pthread_mutex_lock(&xyp_mutex);  
+            local_x_px = x_px;
+            local_y_px = y_px;
+            pthread_mutex_unlock(&xyp_mutex);  
+        } else {
+
+            int sum_idx_x = 0;
+            int sum_idx_y = 0;
+            int count_ones = 0;
+            for (int y = 0; y < NB_ROWS; y++) {
+                for (int x = 0; x < NB_COLS; x++) {
+                    if(visual_cnn_mat[x][y]>0 && (x!=39 && y!= 166)){
+                        sum_idx_x+=x;
+                        sum_idx_y+=y;
+                        count_ones++;
+                    }
                 }
             }
+            
+            if(count_ones > 0) {
+
+                pthread_mutex_lock(&xyp_mutex);  
+                x_px = sum_idx_x/count_ones;
+                y_px = sum_idx_y/count_ones;
+                local_x_px = x_px;
+                local_y_px = y_px;
+                pthread_mutex_unlock(&xyp_mutex);  
+            }
+
         }
         
-        if(count_ones > 0) {
-            avg_idx_x = sum_idx_x/count_ones;
-            avg_idx_y = sum_idx_y/count_ones;
-        }
-
 
 
 
@@ -307,18 +425,18 @@ void* renderMatrix(void* arg) {
             for (int x = 0; x < NB_COLS; x++) {
                 int index = y * NB_COLS + x;
                 color = black;
-                if (visual_raw_mat[x][y] == 1) {
+                if (visual_raw_mat[x][y] >= 1) {
                     // Set color to green (0xFF00FF00) if the matrix value is 1
-                    color = green;
+                    color = green*(visual_raw_mat[x][y]/COLOR_HIGH);
                 } 
-                if (get_distance(x, y, avg_idx_x, avg_idx_y)<=3){
+                if (get_distance(x, y, local_x_px, local_y_px)<=3){
                     color = red;
                 }
-                if (visual_cnn_mat[x][y] == 1) {
+                if (visual_cnn_mat[x][y] >= 1) {
                     // Set color to green (0xFF00FF00) if the matrix value is 1
-                    color = yellow;
+                    color = yellow*(visual_cnn_mat[x][y]/COLOR_HIGH);
                 } 
-                ((Uint32*)pixels)[index] = color;
+                ((Uint32*)pixels)[index] = color + base;
             }
         }
 
@@ -345,7 +463,6 @@ void* saveVideo(void* arg) {
     if(is_live){
         return NULL;
     }
-    printf("Video Recording ...");
 
     int frame_count = 0;
     while(1){
@@ -383,21 +500,36 @@ void* saveVideo(void* arg) {
 
 int main(int argc, char *argv[]) {
 
-    if (argc != 3) {
-        printf("Usage: %s <mode> <scale>\n", argv[0]);
+    if (argc != 5) {
+        printf("Usage: %s <live|video> <neural|algebraic> <scale> <acc_time_ms>\n", argv[0]);
         return 1;
     }
 
-    char *str = argv[1];
-    scale = atoi(argv[2]);
+    char *operation = argv[1];
+    char *estimation = argv[2];
+    scale = atoi(argv[3]);
+    acc_time = (float)(atoi(argv[4]))/1000;
 
 
-    if (strcmp(str, "live") == 0) {
+    if (strcmp(operation, "live") == 0) {
         is_live = true;
-    } else if (strcmp(str, "video") == 0) {
+        printf("Live rendering with acc time of %f [ms] ...\n", acc_time);
+    } else if (strcmp(operation, "video") == 0) {
         is_live = false;
+        printf("Video recording with acc time of %f [ms] ...\n", acc_time);
     } else {
-        printf("Unknown mode\n");
+        printf("Unknown operation mode\n");
+        return 0;
+    }
+
+    if (strcmp(estimation, "neural") == 0) {
+        is_neural = true;
+        printf("Using Neural Estimation\n");
+    } else if (strcmp(estimation, "algebraic") == 0) {
+        is_neural = false;
+        printf("Using Algebraic Estimation\n");
+    } else {
+        printf("Unknown estimation mode\n");
         return 0;
     }
 
@@ -406,22 +538,25 @@ int main(int argc, char *argv[]) {
     memset(shared_raw_mat, 0, sizeof(int) * NB_COLS * NB_ROWS);
     memset(emptyMatrix, 0, sizeof(int) * NB_COLS * NB_ROWS);
 
-    pthread_t updateRawThread, updateCnnThread, renderThread, videoThread;
+    pthread_t updateRawThread, updateCnnThread, updateXypThread;
+    pthread_t renderThread, videoThread;
 
     // Create threads
-    pthread_create(&updateRawThread, NULL, updateRawMat, NULL);
-    pthread_create(&updateCnnThread, NULL, updateCnnMat, NULL);
+    pthread_create(&updateRawThread, NULL, updateRaw, NULL);
+    pthread_create(&updateCnnThread, NULL, updateXyp, NULL);
+    pthread_create(&updateXypThread, NULL, updateCnn, NULL);
     pthread_create(&renderThread, NULL, renderMatrix, NULL);
     pthread_create(&videoThread, NULL, saveVideo, NULL);
 
     // Wait for threads to finish (this will never happen in this example)
     pthread_join(updateRawThread, NULL);
     pthread_join(updateCnnThread, NULL);
+    pthread_join(updateXypThread, NULL);
     pthread_join(renderThread, NULL);
     pthread_join(videoThread, NULL);
 
     // Clean up mutex
-    pthread_mutex_destroy(&coordinates);
+    pthread_mutex_destroy(&xyp_mutex);
     pthread_mutex_destroy(&raw_mutex);
     pthread_mutex_destroy(&cnn_mutex);
 
