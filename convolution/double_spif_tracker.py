@@ -50,7 +50,7 @@ def create_conn_list(width, height):
 
 def create_inner_conn_list(w, h, npc_x, npc_y):
     conn_list = []    
-    weight = 56
+    weight = 24
     delay = 0.1 # 1 [ms]
     nb_col = math.ceil(w/npc_x)
     nb_row = math.ceil(h/npc_y)
@@ -79,9 +79,9 @@ def input_with_timeout(prompt, timeout):
     else:
         return None
 
-def send_kernel():
+def send_kernel(ip_out):
     # Define the connection parameters
-    hostname = '172.16.222.199'  # IP address or hostname of Computer B
+    hostname = ip_out  # IP address or hostname of Computer B
     port = 22  # Default SSH port is 22
     username = 'juan'
     password = '@Q9ep427x'  # Replace with your actual password
@@ -117,7 +117,7 @@ def make_kernel_circle(r, k_sz, weight, kernel):
     dy = np.round(r * np.cos(a)).astype("uint32")
     kernel[var + dx, var + dy] = weight
 
-def make_whole_kernel(k_sz, hs, w_scaler, thickness):
+def make_whole_kernel(ip_out, k_sz, hs, w_scaler, thickness):
 
     # Kernel size should be 'odd' (not 'even')
     k_sz = int(k_sz*hs)
@@ -165,7 +165,7 @@ def make_whole_kernel(k_sz, hs, w_scaler, thickness):
 
 
     np.save("../common/kernel.npy", kernel)
-    send_kernel()
+    send_kernel(ip_out)
 
     print(f"Positive weights: {round(pos_w,6)}")
     print(f"Negative weights: {round(neg_w,6)}")
@@ -186,12 +186,12 @@ def parse_args():
 
     parser.add_argument('-pc', '--port-cnn', type= int, help="Port Out", default=3331)
     parser.add_argument('-pp', '--port-xyp', type= int, help="Port Out", default=3334)
-    parser.add_argument('-ip', '--ip', type= str, help="IP out", default="172.16.222.199")
+    parser.add_argument('-ip', '--ip-out', type= str, help="IP out", default="172.16.222.30")
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
-    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=1.0) # 0.5 xyp | 0.8 cnn
-    parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=3.0) # __ xyp | 4 cnn
-    parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=2)
+    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.4) 
+    parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=3.0) # 
+    parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=1)
     parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=240)
     parser.add_argument('-md', '--mode', type=str, help="SPIF Out: cnn or xyp", default="xyp")
     return parser.parse_args()
@@ -216,7 +216,7 @@ if __name__ == '__main__':
 
 
     print("Generating Kernel ... ")
-    kernel = make_whole_kernel(args.ks, dim.hs, args.w_scaler, args.thickness)
+    kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness)
 
     print("Configuring Infrastructure ... ")
     SUB_WIDTH = 16
@@ -241,7 +241,7 @@ if __name__ == '__main__':
     NPC_X = x*2
     NPC_Y = y*2
 
-    MY_PC_IP = args.ip
+    MY_PC_IP = args.ip_out
     MY_PC_PORT_CNN = args.port_cnn
     MY_PC_PORT_XYP = args.port_xyp
     SPIF_PORT = 3332
@@ -368,6 +368,9 @@ if __name__ == '__main__':
         print(f"\tOutput {OUT_WIDTH} x {OUT_HEIGHT}")
         print(f"\tKernel Size: {len(kernel)}")
         print(f"\tKernel Sum: {abs(round(np.sum(kernel),3))}")
+        print(f"\tWeight Scaler: {args.w_scaler}")
+        print(f"\tTau_m: {args.tau_m}")
+        print(f"\tMode: {args.mode}")
         user_input = input_with_timeout("Happy?\n ", 10)
     except KeyboardInterrupt:
         print("\n Simulation cancelled")
