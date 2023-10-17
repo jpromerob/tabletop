@@ -45,6 +45,10 @@ int y_cm = 0;
 int scale = 1;
 bool is_live = false;
 bool is_neural = false;
+bool is_the_end = false;
+
+
+pthread_mutex_t end_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_mutex_t xyp_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t raw_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -97,8 +101,14 @@ void* updateRaw(void* arg) {
     printf("Listening for RAW data...\n");
 
     struct timespec start_time, current_time;
+    bool local_end = false;
 
-    while (1) {
+    while (!local_end) {
+
+        
+        pthread_mutex_lock(&end_mutex);  
+        local_end = is_the_end;
+        pthread_mutex_unlock(&end_mutex);  
         double elapsed_time;
     
         // Get the current time
@@ -183,7 +193,15 @@ void* updateXyp(void* arg){
 
     struct timespec start_time, current_time;
 
-    while (1) {
+    bool local_end = false;
+
+    while (!local_end) {
+
+        
+        pthread_mutex_lock(&end_mutex);  
+        local_end = is_the_end;
+        pthread_mutex_unlock(&end_mutex);  
+
         double elapsed_time;
     
         // Get the current time
@@ -278,8 +296,15 @@ void* updateCnn(void* arg) {
     printf("Listening for CNN data...\n");
 
     struct timespec start_time, current_time;
+    bool local_end = false;
 
-    while (1) {
+    while (!local_end) {
+
+        
+        pthread_mutex_lock(&end_mutex);  
+        local_end = is_the_end;
+        pthread_mutex_unlock(&end_mutex);  
+    
         double elapsed_time;
     
         // Get the current time
@@ -355,7 +380,15 @@ void* renderMatrix(void* arg) {
     int local_x_px = 0;
     int local_y_px = 0;
 
-    while (1) {
+    bool local_end = false;
+
+    while (!local_end) {
+
+        
+        pthread_mutex_lock(&end_mutex);  
+        local_end = is_the_end;
+        pthread_mutex_unlock(&end_mutex);  
+        
         SDL_Event e;
         while (SDL_PollEvent(&e) != 0) {
             if (e.type == SDL_QUIT) {
@@ -494,6 +527,10 @@ void* saveVideo(void* arg) {
     const char *cnn_vid_fn = "cnn_video.dat";
     saveVideoData(cnn_vid_fn, video_cnn_mat);
     printf("File saved ...\n");   
+
+    pthread_mutex_lock(&end_mutex);  
+    is_the_end = true;
+    pthread_mutex_unlock(&end_mutex);  
 
 }
 

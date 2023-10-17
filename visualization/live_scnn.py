@@ -78,7 +78,7 @@ def visualize(args, dim, kernel, x_px, y_px):
 
     field, line, goals, circles, radius = get_shapes(dim, args.vis_scale)
     red = (0, 0, 255)
-    draw_kernel = False
+    draw_kernel = True
     k_sz = len(kernel)
     x_k = int(dim.fl/2) - int(k_sz/2)
     y_k = int(dim.fw/2) - int(k_sz/2)

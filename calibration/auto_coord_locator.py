@@ -230,15 +230,10 @@ def modify_lut(homgra, dim, marker_list, radius, args):
             else:
                 csv_writer.writerow(old_data_list[idx])
 
-def shall_calibrate():
-
-    
-    receiver_ip = "172.16.222.199"
-    receiver_port = 5252
-
+def shall_calibrate(args):
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((receiver_ip, receiver_port))
+    sock.bind((args.calibrator_ip, args.port_intercom))
 
     # Set a timeout for the recvfrom operation (e.g., 5 seconds)
     sock.settimeout(1)
@@ -292,6 +287,10 @@ def parse_args():
 
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
 
+
+    parser.add_argument('-ip', '--calibrator-ip', type=str, help="IP address of calibrator", default="172.16.222.30")
+    parser.add_argument('-pc', '--port-calibration', type= int, help="Port for calibration", default=5151)
+    parser.add_argument('-pi', '--port-intercom', type= int, help="Port for intercom", default=5252)
     parser.add_argument('-p', '--port', type= int, help="Port for events", default=5151)
     parser.add_argument('-t', '--threshold', type= int, help="Threshold for noise filtering", default=6)
     parser.add_argument('-r', '--radius', type= int, help="Cluster radius", default=3)
@@ -329,15 +328,20 @@ if __name__ == '__main__':
     accumulator = np.zeros((args.res_x,args.res_y,3))
 
 
-    print("Waiting for Calibration signal")
+    print("Preparing for Calibration signal using:")
+    print(f" - Calibrator IP: {args.calibrator_ip}")
+    print(f" - Ports: calibration: {args.port_calibration}")
+    print(f" - Ports: intercom: {args.port_intercom}")
+    print("Waiting for Calibration signal ...")
+
     while(True):
         
-        if shall_calibrate():            
+        if shall_calibrate(args):            
 
             print("Starting new calibration")
 
             frame_counter = 0
-            with aestream.UDPInput((args.res_x, args.res_y), device = 'cpu', port=args.port) as stream1:
+            with aestream.UDPInput((args.res_x, args.res_y), device = 'cpu', port=args.port_calibration) as stream1:
                         
                 while True:
 
