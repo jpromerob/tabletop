@@ -7,6 +7,8 @@ import argparse
 import select
 import pdb
 
+SLEEPER = 2
+
 def get_input_with_timeout(prompt, timeout_seconds):
     print(prompt, end=' ', flush=True)
     
@@ -56,11 +58,13 @@ def build_cmd(args, lut, mode):
 
 
 def allow_manual_setup(args):
+    time.sleep(SLEEPER)
+    os.system(f"pkill -f aestream")
 
     command = build_cmd(args, f"cam_lut_undistortion_{args.camera_type}", "streaming")
     process = subprocess.Popen(command, shell=True)
     cam_location_in_progress = True
-    time.sleep(1)
+    time.sleep(SLEEPER)
     while(cam_location_in_progress):
         # If the process exceeds the specified duration, terminate it
         timeout_seconds = 2  # Adjust the timeout duration as needed
@@ -76,8 +80,11 @@ def allow_manual_setup(args):
     except subprocess.TimeoutExpired:
         process.terminate()
     os.system(f"pkill -f cam_lut_undistortion_{args.camera_type}.csv")
+    time.sleep(SLEEPER)
 
 def enable_calibration(args):
+    time.sleep(SLEEPER)
+    os.system(f"pkill -f aestream")
 
     command = build_cmd(args, f"cam_lut_undistortion_{args.camera_type}", "calibration")
     process = subprocess.Popen(command, shell=True)
@@ -87,7 +94,7 @@ def enable_calibration(args):
     except subprocess.TimeoutExpired:
         process.terminate()
     os.system(f"pkill -f cam_lut_undistortion_{args.camera_type}.csv")
-    time.sleep(3*args.duration)
+    time.sleep(SLEEPER)
 
 
 def make_sure_dvs_ready(args):
@@ -100,7 +107,7 @@ def parse_args():
 
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
 
-    parser.add_argument('-ip', '--calibrator-ip', type=str, help="IP address of calibrator", default="172.16.222.199")
+    parser.add_argument('-ip', '--calibrator-ip', type=str, help="IP address of calibrator", default="172.16.222.30")
     parser.add_argument('-ps', '--port-streaming', type= int, help="Port for live streaming", default=5050)
     parser.add_argument('-pc', '--port-calibration', type= int, help="Port for calibration", default=5151)
     parser.add_argument('-pi', '--port-intercom', type= int, help="Port for intercom", default=5252)
@@ -112,6 +119,9 @@ def parse_args():
     return parser.parse_args()
 
 def stream_warped_data(args):
+
+    os.system(f"pkill -f aestream")
+    time.sleep(SLEEPER)
     os.system(build_cmd(args, f"cam_lut_homography_{args.camera_type}", "streaming"))
 
 def print_data(args):
@@ -141,6 +151,5 @@ if __name__ == '__main__':
         
     make_sure_dvs_ready(args)
     allow_manual_setup(args)
-    time.sleep(10)
     enable_calibration(args)
     stream_warped_data(args)

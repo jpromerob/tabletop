@@ -22,14 +22,14 @@
 #define PORT_UDP_RAW 3330
 #define PORT_UDP_CNN 3331
 
-int frame_raw_mat[NB_COLS][NB_ROWS];
-int frame_cnn_mat[NB_COLS][NB_ROWS];
 int video_raw_mat[NB_FRAMES][NB_COLS][NB_ROWS];
 int video_cnn_mat[NB_FRAMES][NB_COLS][NB_ROWS];
 int emptyMatrix[NB_COLS][NB_ROWS];
 int scale = 1;
+int nb_1ms_frames_per_frame = 1;
 int frame_count = 0;
 int frame_step = 1;
+bool show_target = false;
 
 pthread_mutex_t cur_frame_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -88,8 +88,6 @@ void* renderMatrix(void* arg) {
         pthread_mutex_lock(&cur_frame_mutex);
         cur_frame = frame_count;
         pthread_mutex_unlock(&cur_frame_mutex);
-        memcpy(frame_raw_mat, video_raw_mat[cur_frame], sizeof(frame_raw_mat));
-        memcpy(frame_cnn_mat, video_cnn_mat[cur_frame], sizeof(frame_cnn_mat));
 
         int sum_idx_x = 0;
         int sum_idx_y = 0;
@@ -98,7 +96,7 @@ void* renderMatrix(void* arg) {
         int avg_idx_y = 0;
         for (int y = 0; y < NB_ROWS; y++) {
             for (int x = 0; x < NB_COLS; x++) {
-                if(frame_cnn_mat[x][y]>0){
+                if(video_cnn_mat[cur_frame][x][y]>0){
                     sum_idx_x+=x;
                     sum_idx_y+=y;
                     count_ones++;
@@ -126,17 +124,22 @@ void* renderMatrix(void* arg) {
             for (int x = 0; x < NB_COLS; x++) {
                 int index = y * NB_COLS + x;
                 color = black;
-                if (frame_raw_mat[x][y] == 1) {
-                    // Set color to green (0xFF00FF00) if the matrix value is 1
-                    color = green;
-                } 
-                if (get_distance(x, y, avg_idx_x, avg_idx_y)<=3){
-                    color = red;
+                for(int k=0; k < nb_1ms_frames_per_frame; k++){
+                    if (video_raw_mat[cur_frame+k][x][y] == 1) {
+                        // Set color to green (0xFF00FF00) if the matrix value is 1
+                        color = green;
+                    } 
+                    if (video_cnn_mat[cur_frame+k][x][y] == 1) {
+                        // Set color to green (0xFF00FF00) if the matrix value is 1
+                        color = yellow;
+                    } 
                 }
-                if (frame_cnn_mat[x][y] == 1) {
-                    // Set color to green (0xFF00FF00) if the matrix value is 1
-                    color = yellow;
-                } 
+                if (show_target){
+                    if (get_distance(x, y, avg_idx_x, avg_idx_y)<=3){
+                        color = red;
+                    }
+                }
+                
                 ((Uint32*)pixels)[index] = color;
             }
         }
@@ -214,13 +217,15 @@ void* handleCommand(void* arg) {
 
 int main(int argc, char* argv[]) {
 
-    if (argc != 2) {
-        printf("Usage: %s <scale>\n", argv[0]);
+    if (argc != 4) {
+        printf("Usage: %s <scale> <show-target> <nb_1ms_frames_per_frame>\n", argv[0]);
         return 1;
     }
 
     // Convert the command-line arguments (strings) to integers
     scale = atoi(argv[1]);
+    show_target = (bool)atoi(argv[2]);
+    nb_1ms_frames_per_frame = atoi(argv[3]);
 
 
     pthread_t renderThread, commandThread;

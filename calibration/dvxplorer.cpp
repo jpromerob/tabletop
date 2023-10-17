@@ -15,11 +15,11 @@ using namespace std;
 
 
 
-#define IP_VISUAL "172.16.222.199"
+#define IP_VISUAL "172.16.222.30"
 #define PORT_VISUAL 3330
 #define IP_SPINN "172.16.223.2"
 #define PORT_SPINN 3333
-#define NUM_EVENTS 64 // Number of events to send
+#define NUM_EVENTS 1 // Number of events to send
 
 
 #define MAX_PIXIX 2
@@ -194,7 +194,7 @@ int main(void) {
     /* Create the main LUT, i.e. an array of type 'lutmap'*/
     lutmap * lut = (lutmap*)malloc(max_dim*max_dim*sizeof(lutmap));
 
-	std::string undistortion_filename = "cam_lut_homography.csv";
+	std::string undistortion_filename = "cam_lut_undistortion_inivation";
 
     /* Fill the main LUT with meaningful data: with or without undistortion */
     if(undistortion_filename.length() > 0){        
@@ -250,6 +250,8 @@ int main(void) {
 		empty[i] = 0;
 	}
 
+    printf("Happy papi\n");
+
 
 	int udp_ev_counter = 0;
 	while (!globalShutdown.load(memory_order_relaxed)) {
@@ -260,7 +262,7 @@ int main(void) {
 
 		for (auto &packet : *packetContainer) {
 			if (packet == nullptr) {
-				// printf("Packet is empty (not present).\n");
+				printf("Packet is empty (not present).\n");
 				continue; // Skip if nothing there.
 			}
 
@@ -278,18 +280,18 @@ int main(void) {
                         uint16_t y = lut[firstEvent.getX()*info.dvsSizeY+firstEvent.getY()].y[pixix];
                         bool pol = true;
                         eventArray[udp_ev_counter] = noTimestamp + (pol << pShift) + (y << yShift) + (x << xShift);
-                        // printf("...\n");	
+                        	
+					    printf("(%d,%d)\n", x, y);
                         udp_ev_counter++;
                         if (udp_ev_counter == NUM_EVENTS){
-                            // sendto(sock_visual, eventArray, NUM_EVENTS * sizeof(unsigned int), 0, (struct sockaddr *)&server_visual, sizeof(server_visual));
-                            sendto(sock_spinn, eventArray, NUM_EVENTS * sizeof(unsigned int), 0, (struct sockaddr *)&server_spinn, sizeof(server_spinn));
+                            sendto(sock_visual, eventArray, NUM_EVENTS * sizeof(unsigned int), 0, (struct sockaddr *)&server_visual, sizeof(server_visual));
+                            // sendto(sock_spinn, eventArray, NUM_EVENTS * sizeof(unsigned int), 0, (struct sockaddr *)&server_spinn, sizeof(server_spinn));
                             memcpy(eventArray, empty, NUM_EVENTS * sizeof(unsigned int));
                             udp_ev_counter = 0;
                         }
                     }
                     
                     
-					// printf("(%u,%u)\n", x, y);	
 					
 				}
 
