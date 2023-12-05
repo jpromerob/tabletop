@@ -21,7 +21,7 @@
 #define NB_ROWS 181
 #define NB_FRAMES 5000
 
-#define BUFFER_SIZE 1024 * 256
+#define BUFFER_SIZE 1024
 #define PORT_UDP_RAW 3330
 #define PORT_UDP_CNN 3331
 #define PORT_UDP_XYP 3334
@@ -146,7 +146,7 @@ void* updateRaw(void* arg) {
             elapsed_time = (current_time.tv_sec - start_time.tv_sec) +
                         (current_time.tv_nsec - start_time.tv_nsec) / 1e9;
             
-        } while (elapsed_time < acc_time); // Repeat until 1ms has elapsed
+        } while (elapsed_time < acc_time/1000); // Repeat until 1ms has elapsed
         
         // Acquire mutex lock | update data | release mutex lock
         pthread_mutex_lock(&raw_mutex);        
@@ -342,7 +342,7 @@ void* updateCnn(void* arg) {
             elapsed_time = (current_time.tv_sec - start_time.tv_sec) +
                         (current_time.tv_nsec - start_time.tv_nsec) / 1e9;
             
-        } while (elapsed_time < acc_time); // Repeat until 1ms has elapsed
+        } while (elapsed_time < acc_time/1000); // Repeat until 1ms has elapsed
         
         // Acquire mutex lock | update data | release mutex lock
         pthread_mutex_lock(&cnn_mutex);        
@@ -510,13 +510,13 @@ void* saveVideo(void* arg) {
         memcpy(video_raw_mat[frame_count], visual_raw_mat, sizeof(visual_raw_mat));
         memcpy(video_cnn_mat[frame_count], visual_cnn_mat, sizeof(visual_cnn_mat));
 
-        usleep(1000);
+        usleep(1000*acc_time);
         if(frame_count%100==0){
             printf("%d frames\n", frame_count);
         }
         frame_count++;
         
-        if(frame_count==NB_FRAMES){
+        if(frame_count==NB_FRAMES/acc_time){
             printf("\nVideo Saved!\n");
             break;
         }
@@ -545,7 +545,7 @@ int main(int argc, char *argv[]) {
     char *operation = argv[1];
     char *estimation = argv[2];
     scale = atoi(argv[3]);
-    acc_time = (float)(atoi(argv[4]))/1000;
+    acc_time = (atof(argv[4]));
 
 
     if (strcmp(operation, "live") == 0) {
@@ -580,8 +580,8 @@ int main(int argc, char *argv[]) {
 
     // Create threads
     pthread_create(&updateRawThread, NULL, updateRaw, NULL);
-    pthread_create(&updateCnnThread, NULL, updateXyp, NULL);
-    pthread_create(&updateXypThread, NULL, updateCnn, NULL);
+    pthread_create(&updateCnnThread, NULL, updateCnn, NULL);
+    pthread_create(&updateXypThread, NULL, updateXyp, NULL);
     pthread_create(&renderThread, NULL, renderMatrix, NULL);
     pthread_create(&videoThread, NULL, saveVideo, NULL);
 

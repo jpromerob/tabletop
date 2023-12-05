@@ -19,8 +19,8 @@ def parse_args():
 
     parser.add_argument('-p', '--port', type= int, help="Port for events", default=5050)
     parser.add_argument('-s', '--scale', type=int, help="Image scale", default=1)
-    parser.add_argument('-l', '--length', type=int, help="Image length", default=0)
-    parser.add_argument('-w', '--width', type=int, help="Image width", default=0)
+    parser.add_argument('-l', '--length', type=int, help="Image length", default=1280)
+    parser.add_argument('-w', '--width', type=int, help="Image width", default=720)
 
     return parser.parse_args()
 

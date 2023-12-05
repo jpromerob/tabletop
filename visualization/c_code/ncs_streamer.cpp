@@ -70,6 +70,15 @@ int main(void) {
 
 	// Let's turn on blocking data-get mode to avoid wasting resources.
 	handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
+  // Set number of events per packet
+	handle.configSet(CAER_HOST_CONFIG_PACKETS,CAER_HOST_CONFIG_PACKETS_MAX_CONTAINER_PACKET_SIZE, 64);
+	// Configs about buffer
+	handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BUFFER_SIZE, 1024);
+
+	handle.configSet(DVX_DVS_CHIP, DVX_DVS_CHIP_FIXED_READ_TIME_ENABLE, false);
+	handle.configSet(DVX_DVS_CHIP, DVX_DVS_CHIP_TIMING_ED, 307);      // 10µs T_ED.
+	handle.configSet(DVX_DVS_CHIP, DVX_DVS_CHIP_TIMING_NEXT_SEL, 15); // Second smallest NEXT_SEL value.
+
 
 
 
@@ -121,7 +130,7 @@ int main(void) {
 
 		for (auto &packet : *packetContainer) {
 			if (packet == nullptr) {
-				printf("Packet is empty (not present).\n");
+				// printf("Packet is empty (not present).\n");
 				continue; // Skip if nothing there.
 			}
 
@@ -137,9 +146,11 @@ int main(void) {
 					uint16_t x = firstEvent.getX();
 					uint16_t y = firstEvent.getY();
 					bool pol = true;
-					eventArray[udp_ev_counter] = noTimestamp + (pol << pShift) + (y << yShift) + (x << xShift);
-					// printf("...\n");	
-					udp_ev_counter++;
+					if (x<280 && y <180){
+						eventArray[udp_ev_counter] = noTimestamp + (pol << pShift) + (y << yShift) + (x << xShift);
+						// printf("...\n");	
+						udp_ev_counter++;
+					}
 					if (udp_ev_counter == NUM_EVENTS){
 						sendto(sock, eventArray, NUM_EVENTS * sizeof(unsigned int), 0, (struct sockaddr *)&server, sizeof(server));
 						memcpy(eventArray, empty, NUM_EVENTS * sizeof(unsigned int));
