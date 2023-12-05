@@ -278,6 +278,7 @@ def new_find_marker_coordinates(res_x, res_y, filtered_array):
         marker_list.append([marker_x, marker_y])
 
 
+    print("Lalala")
     print(marker_list)
     return marker_list
 
@@ -294,7 +295,7 @@ def parse_args():
     parser.add_argument('-p', '--port', type= int, help="Port for events", default=5151)
     parser.add_argument('-t', '--threshold', type= int, help="Threshold for noise filtering", default=6)
     parser.add_argument('-r', '--radius', type= int, help="Cluster radius", default=3)
-    parser.add_argument('-e', '--events', type= float, help="Number of events", default=1000)
+    parser.add_argument('-e', '--events', type= float, help="Number of events", default=10000)
     parser.add_argument('-vs', '--vis-scale', type=int, help="Visualization scale", default=1)
     parser.add_argument('-hs', '--hom-scale', type=float, help="Homography scale", default=0.64)
     parser.add_argument('-ct', '--camera-type', type=str, help="inivation/prophesee", default="prophesee")
