@@ -7,7 +7,7 @@ import argparse
 import select
 import pdb
 
-SLEEPER = 2
+SLEEPER = 3
 
 def get_input_with_timeout(prompt, timeout_seconds):
     print(prompt, end=' ', flush=True)
