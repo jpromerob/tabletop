@@ -171,6 +171,8 @@ def get_new_coord(x, y, h, dim, marker_list, radius):
     return idx_x, idx_y
 
 def modify_lut(homgra, dim, marker_list, radius, args):
+
+    print(f"Modifying LUT with radius = {radius}")
     
     h = homgra #np.loadtxt('homgra.txt')
     
@@ -295,7 +297,7 @@ def parse_args():
     parser.add_argument('-p', '--port', type= int, help="Port for events", default=5151)
     parser.add_argument('-t', '--threshold', type= int, help="Threshold for noise filtering", default=6)
     parser.add_argument('-r', '--radius', type= int, help="Cluster radius", default=3)
-    parser.add_argument('-e', '--events', type= float, help="Number of events", default=10000)
+    parser.add_argument('-e', '--events', type= float, help="Number of events", default=20000)
     parser.add_argument('-vs', '--vis-scale', type=int, help="Visualization scale", default=1)
     parser.add_argument('-hs', '--hom-scale', type=float, help="Homography scale", default=0.64)
     parser.add_argument('-ct', '--camera-type', type=str, help="inivation/prophesee", default="prophesee")
