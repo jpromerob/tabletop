@@ -171,6 +171,8 @@ def get_new_coord(x, y, h, dim, marker_list, radius):
     return idx_x, idx_y
 
 def modify_lut(homgra, dim, marker_list, radius, args):
+
+    print(f"Modifying LUT with radius = {radius}")
     
     h = homgra #np.loadtxt('homgra.txt')
     

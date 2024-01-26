@@ -10,13 +10,13 @@
 #include <math.h>
 #include <stdbool.h>
 
-#define XYP_TIME 0.000010
 #define COLOR_HIGH 1
 #define K_SZ 29
+#define NB_NETS 4
 
 #define WINDOW_WIDTH 280
 #define WINDOW_SLICE 181
-#define WINDOW_HEIGHT 543
+#define WINDOW_HEIGHT WINDOW_SLICE*NB_NETS
 #define NB_FRAMES 5000
 
 #define BUFFER_SIZE 1024 * 256
@@ -33,19 +33,21 @@ int visual_raw_mat[WINDOW_WIDTH][WINDOW_HEIGHT]; // matrix used by render (raw)
 int visual_cnn_mat[WINDOW_WIDTH][WINDOW_HEIGHT]; // matrix used by render (scnn)
 
 float acc_time = 0.001000;
-int x_px = 0;
-int y_px = 0;
-int x_cm = 0;
-int y_cm = 0;
+int x_px[NB_NETS];
+int y_px[NB_NETS];
 int scale = 1;
 bool is_live = false;
-bool is_neural = false;
 bool is_the_end = false;
 
-
-pthread_mutex_t end_mutex = PTHREAD_MUTEX_INITIALIZER;
+int base = 0xFF000000;
+int black = 0x00000000;
+int green = 0x00006400;
+int blue = 0x000000FF;
+int red = 0x00FF0000;
+int yellow = 0x00FFFF00;
 
 pthread_mutex_t xyp_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t end_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t raw_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t cnn_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -53,8 +55,6 @@ pthread_mutex_t cnn_mutex = PTHREAD_MUTEX_INITIALIZER;
 double get_distance(double x1, double y1, double x2, double y2) {
     return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
 }
-
-
 
 void* updateRaw(void* arg) {
     int sockfd;
@@ -120,9 +120,9 @@ void* updateRaw(void* arg) {
                 int x = (packed_data >> 16) & 0x00003FFF;
                 int y = (packed_data >> 0) & 0x00003FFF;
 
-                input_raw_mat[x][y+WINDOW_SLICE*0] += 1;
-                input_raw_mat[x][y+WINDOW_SLICE*1] += 1;
-                input_raw_mat[x][y+WINDOW_SLICE*2] += 1;
+                for (int j = 0; j < NB_NETS; j++) {
+                    input_raw_mat[x][y+WINDOW_SLICE*j] += 1;
+                }
             }
             
             // Get the current time
@@ -135,7 +135,7 @@ void* updateRaw(void* arg) {
         } while (elapsed_time < acc_time); // Repeat until 1ms has elapsed
         
         // Acquire mutex lock | update data | release mutex lock
-        pthread_mutex_lock(&raw_mutex);        
+        pthread_mutex_lock(&raw_mutex);
         memcpy(shared_raw_mat, input_raw_mat, sizeof(int) * WINDOW_WIDTH * WINDOW_HEIGHT);
         pthread_mutex_unlock(&raw_mutex);
 
@@ -149,10 +149,10 @@ void* updateRaw(void* arg) {
 }
 
 
-
 void* updateCnn(void* arg) {
     
     int screen_id = *((int *)arg);
+    printf("Screen ID: %d\n", screen_id);
 
     int sockfd;
     struct sockaddr_in server_addr, client_addr;
@@ -217,7 +217,25 @@ void* updateCnn(void* arg) {
             input_cnn_mat[x][y+WINDOW_SLICE*screen_id] += 1;
         }
             
+        int sum_idx_x = 0;
+        int sum_idx_y = 0;
+        int count_ones = 0;
+        for (int y = WINDOW_SLICE*(screen_id+0); y < WINDOW_SLICE*(screen_id+1); y++) {
+            for (int x = 0; x < WINDOW_WIDTH; x++) {
+                if(visual_cnn_mat[x][y]>0){
+                    sum_idx_x+=x;
+                    sum_idx_y+=y;
+                    count_ones++;
+                }
+            }
+        }
         
+        if(count_ones > 0) {
+            pthread_mutex_lock(&xyp_mutex);  
+            x_px[screen_id] = sum_idx_x/count_ones;
+            y_px[screen_id] = sum_idx_y/count_ones;
+            pthread_mutex_unlock(&xyp_mutex);  
+        }        
 
     }
 
@@ -225,7 +243,6 @@ void* updateCnn(void* arg) {
 
     return NULL;
 }
-
 
 
 void* updateShared(void* arg) {
@@ -238,7 +255,7 @@ void* updateShared(void* arg) {
         local_end = is_the_end;
         pthread_mutex_unlock(&end_mutex);  
 
-        usleep(1000);
+        usleep(1000000*acc_time);
 
         pthread_mutex_lock(&cnn_mutex);        
         memcpy(shared_cnn_mat, input_cnn_mat, sizeof(int) * WINDOW_WIDTH * WINDOW_HEIGHT);
@@ -248,19 +265,9 @@ void* updateShared(void* arg) {
     }
 }
 
+
 // Function to render the entire matrix as a texture
 void* renderMatrix(void* arg) {
-
-    if(!is_live){
-        return NULL;
-    }
-
-    int base = 0xFF000000;
-    int black = 0x00000000;
-    int green = 0x00006600;
-    int blue = 0x000000FF;
-    int red = 0x00FF0000;
-    int yellow = 0x00FFFF00;
 
     SDL_Init(SDL_INIT_VIDEO);
 
@@ -268,8 +275,6 @@ void* renderMatrix(void* arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     SDL_Texture* matrixTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WINDOW_WIDTH, WINDOW_HEIGHT);
 
-    int local_x_px = 0;
-    int local_y_px = 0;
 
     bool local_end = false;
 
@@ -298,44 +303,15 @@ void* renderMatrix(void* arg) {
 
         pthread_mutex_lock(&cnn_mutex);
         memcpy(visual_cnn_mat, shared_cnn_mat, sizeof(int) * WINDOW_WIDTH * WINDOW_HEIGHT);
-        pthread_mutex_unlock(&cnn_mutex);
+        pthread_mutex_unlock(&cnn_mutex);     
 
 
-
-        if(is_neural){
-            pthread_mutex_lock(&xyp_mutex);  
-            local_x_px = x_px;
-            local_y_px = y_px;
-            pthread_mutex_unlock(&xyp_mutex);  
-        } else {
-
-            int sum_idx_x = 0;
-            int sum_idx_y = 0;
-            int count_ones = 0;
-            for (int y = 0; y < WINDOW_HEIGHT; y++) {
-                for (int x = 0; x < WINDOW_WIDTH; x++) {
-                    if(visual_cnn_mat[x][y]>0 && (x!=39 && y!= 166)){
-                        sum_idx_x+=x;
-                        sum_idx_y+=y;
-                        count_ones++;
-                    }
-                }
-            }
-            
-            if(count_ones > 0) {
-
-                pthread_mutex_lock(&xyp_mutex);  
-                x_px = sum_idx_x/count_ones;
-                y_px = sum_idx_y/count_ones;
-                local_x_px = x_px;
-                local_y_px = y_px;
-                pthread_mutex_unlock(&xyp_mutex);  
-            }
-
-        }
-        
-
-
+        int local_x_px[NB_NETS];
+        int local_y_px[NB_NETS];
+        pthread_mutex_lock(&xyp_mutex);          
+        memcpy(local_x_px, x_px, sizeof(int) * NB_NETS);
+        memcpy(local_y_px, y_px, sizeof(int) * NB_NETS);
+        pthread_mutex_unlock(&xyp_mutex);  
 
         // Lock the texture for writing
         void* pixels;
@@ -345,22 +321,24 @@ void* renderMatrix(void* arg) {
         int color = black;
 
         // Update the texture pixel data
-        for (int y = 0; y < WINDOW_HEIGHT; y++) {
-            for (int x = 0; x < WINDOW_WIDTH; x++) {
-                int index = y * WINDOW_WIDTH + x;
-                color = black;
-                if (visual_raw_mat[x][y] >= 1) {
-                    // Set color to green (0xFF00FF00) if the matrix value is 1
-                    color = green*(visual_raw_mat[x][y]/COLOR_HIGH);
-                } 
-                // if (get_distance(x, y, local_x_px, local_y_px)<=3){
-                //     color = red;
-                // }
-                if (visual_cnn_mat[x][y] >= 1) {
-                    // Set color to green (0xFF00FF00) if the matrix value is 1
-                    color = yellow*(visual_cnn_mat[x][y]/COLOR_HIGH);
-                } 
-                ((Uint32*)pixels)[index] = color + base;
+        for (int screen_id = 0; screen_id < NB_NETS; screen_id++) {
+            for (int y = WINDOW_SLICE*(screen_id+0); y < WINDOW_SLICE*(screen_id+1); y++) {
+                for (int x = 0; x < WINDOW_WIDTH; x++) {
+                    int index = y * WINDOW_WIDTH + x;
+                    color = black;
+                    if (visual_raw_mat[x][y] >= 1) {
+                        // Set color to green (0xFF00FF00) if the matrix value is 1
+                        color = green*(visual_raw_mat[x][y]/COLOR_HIGH);
+                    } 
+                    if (get_distance(x, y, local_x_px[screen_id], local_y_px[screen_id])<=3){
+                        color = yellow;
+                    }
+                    if (visual_cnn_mat[x][y] >= 1) {
+                        // Set color to green (0xFF00FF00) if the matrix value is 1
+                        color = red*(visual_cnn_mat[x][y]/COLOR_HIGH);
+                    } 
+                    ((Uint32*)pixels)[index] = color + base;
+                }
             }
         }
 
@@ -378,7 +356,7 @@ void* renderMatrix(void* arg) {
         SDL_RenderPresent(renderer);
 
         // Delay to limit the frame rate
-        SDL_Delay(16); // Adjust the delay as needed for your desired frame rate
+        SDL_Delay(1); // Adjust the delay as needed for your desired frame rate
     }
 }
 
@@ -386,69 +364,47 @@ void* renderMatrix(void* arg) {
 
 int main(int argc, char *argv[]) {
 
-    if (argc != 5) {
-        printf("Usage: %s <live|video> <neural|algebraic> <scale> <acc_time_ms>\n", argv[0]);
+    if (argc != 3) {
+        printf("Usage: %s <scale> <acc_time_ms>\n", argv[0]);
         return 1;
     }
 
     char *operation = argv[1];
-    char *estimation = argv[2];
-    scale = atoi(argv[3]);
-    acc_time = (float)(atoi(argv[4]))/1000;
+    scale = atoi(argv[1]);
+    acc_time = (float)(atoi(argv[2]))/1000;
 
-
-    if (strcmp(operation, "live") == 0) {
-        is_live = true;
-        printf("Live rendering with acc time of %f [ms] ...\n", acc_time);
-    } else if (strcmp(operation, "video") == 0) {
-        is_live = false;
-        printf("Video recording with acc time of %f [ms] ...\n", acc_time);
-    } else {
-        printf("Unknown operation mode\n");
-        return 0;
+    int screen_id[NB_NETS];
+    for (int i = 0; i < NB_NETS; i++) {
+        screen_id[i] = i;
+        x_px[i] = WINDOW_WIDTH/2;
+        y_px[i] = WINDOW_SLICE*(i+0.5);
     }
-
-    if (strcmp(estimation, "neural") == 0) {
-        is_neural = true;
-        printf("Using Neural Estimation\n");
-    } else if (strcmp(estimation, "algebraic") == 0) {
-        is_neural = false;
-        printf("Using Algebraic Estimation\n");
-    } else {
-        printf("Unknown estimation mode\n");
-        return 0;
-    }
-
 
     memset(input_raw_mat, 0, sizeof(int) * WINDOW_WIDTH * WINDOW_HEIGHT);
     memset(shared_raw_mat, 0, sizeof(int) * WINDOW_WIDTH * WINDOW_HEIGHT);
     memset(emptyMatrix, 0, sizeof(int) * WINDOW_WIDTH * WINDOW_HEIGHT);
 
-    pthread_t updateRawThread, updateCnnThreadFast, updateCnnThreadMedium, updateCnnThreadSlow, updateSharedThread;
+    pthread_t updateRawThread, updateSharedThread, updateCnnThreads[NB_NETS];
     pthread_t renderThread;
 
-    int screen_id_f = 0;
-    int screen_id_m = 1;
-    int screen_id_s = 2;
 
     // Create threads
     pthread_create(&updateRawThread, NULL, updateRaw, NULL);
-    pthread_create(&updateCnnThreadFast, NULL, updateCnn, (void *)&screen_id_f);
-    pthread_create(&updateCnnThreadMedium, NULL, updateCnn, (void *)&screen_id_m);
-    pthread_create(&updateCnnThreadSlow, NULL, updateCnn, (void *)&screen_id_s);
+    for (int i = 0; i < NB_NETS; i++) {
+        pthread_create(&updateCnnThreads[i], NULL, updateCnn, (void *)&screen_id[i]);
+    }
     pthread_create(&updateSharedThread, NULL, updateShared, NULL);
     pthread_create(&renderThread, NULL, renderMatrix, NULL);
 
     // Wait for threads to finish (this will never happen in this example)
     pthread_join(updateRawThread, NULL);
-    pthread_join(updateCnnThreadFast, NULL);
-    pthread_join(updateCnnThreadMedium, NULL);
-    pthread_join(updateCnnThreadSlow, NULL);
+    for (int i = 0; i < NB_NETS; i++) {
+        pthread_join(updateCnnThreads[i], NULL);
+    }
     pthread_join(updateSharedThread, NULL);
     pthread_join(renderThread, NULL);
 
     // Clean up mutex
-    pthread_mutex_destroy(&xyp_mutex);
     pthread_mutex_destroy(&raw_mutex);
     pthread_mutex_destroy(&cnn_mutex);
 

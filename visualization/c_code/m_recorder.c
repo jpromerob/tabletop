@@ -23,7 +23,7 @@
 
 #define BUFFER_SIZE 1024 * 256
 #define PORT_UDP_RAW 3330
-#define PORT_UDP_CNN 3337
+#define PORT_UDP_CNN 3334
 #define PORT_UDP_XYP 3335
 
 int emptyMatrix[NB_COLS][NB_ROWS];
