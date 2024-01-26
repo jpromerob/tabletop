@@ -19,7 +19,7 @@ from tools import Dimensions
 
 
 ##############################################################################################
-# This script returns output of 2 CNN channels (one for fast tracking, one for slow tracking)
+# In this script, fast CNN inhibits slow CNN
 ##############################################################################################
 
 def save_tuples_to_csv(data, filename):
@@ -52,7 +52,7 @@ def create_conn_list(width, height):
     save_tuples_to_csv(conn_list, "my_conn_list.csv")
     return conn_list
 
-def create_inner_conn_list(w, h, npc_x, npc_y):
+def create_one_to_one_cnn_2d(w, h, npc_x, npc_y):
     conn_list = []    
     weight = 24
     delay = 0.1 # 1 [ms]
@@ -177,24 +177,25 @@ def make_whole_kernel(ip_out, k_sz, hs, w_scaler, thickness, fs_ratio):
     return kernel
 
 
-spin_spif_map = {"1": "172.16.223.2", 
-                 "37": "172.16.223.106", 
-                 "43": "172.16.223.98",
-                 "13": "172.16.223.10",
-                 "121": "172.16.223.122",
-                 "129": "172.16.223.130"}
+spin_spif_map = {"1": "172.16.223.2",       # rack 1   | spif-00
+                 "37": "172.16.223.106",    # b-ip 37  | spif-13
+                 "43": "172.16.223.98",     # b-ip 43  | spif-12
+                 "13": "172.16.223.10",     # 3-b mach | spif-01
+                 "121": "172.16.223.122",   # rack 3   | spif-15
+                 "129": "172.16.223.130"}   # rack 2   | spif-16
 
 def parse_args():
 
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
 
-    parser.add_argument('-pf', '--port-f-cnn', type= int, help="Port Out", default=3331)
-    parser.add_argument('-ps', '--port-s-cnn', type= int, help="Port Out", default=3334)
+    parser.add_argument('-pf', '--port-f-cnn', type= int, help="Port Out (fast)", default=3331)
+    parser.add_argument('-pm', '--port-m-cnn', type= int, help="Port Out (mixed)", default=3334)
+    parser.add_argument('-ps', '--port-s-cnn', type= int, help="Port Out (slow)", default=3337)
     parser.add_argument('-ip', '--ip-out', type= str, help="IP out", default="172.16.222.30")
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
-    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=1.2) 
-    parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=2.0) # 
+    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.4) 
+    parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=3.0) # 
     parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=1)
     parser.add_argument('-r', '--ratio', type=float, help="f/s ratio", default=1.0) # 
     parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=240)
@@ -210,11 +211,13 @@ if __name__ == '__main__':
     CFG_FILE = f"spynnaker_{args.board}.cfg"
     SPIF_IP_F = "172.16.223.2"
     SPIF_IP_S = "172.16.223.130" # SPIF-16 CHIP (16,8)
+    SPIF_IP_M = "172.16.223.122" # SPIF-15 CHIP (32,16)
 
 
     print("Generating Kernel ... ")
-    f_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 1)
-    s_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, args.ratio)
+    f_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 2)
+    m_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 2)
+    s_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 2)
 
     print("Configuring Infrastructure ... ")
     SUB_WIDTH = 16
@@ -237,16 +240,18 @@ if __name__ == '__main__':
             break
     
     NPC_X = x*2
-    NPC_Y = y*2
+    NPC_Y = y
 
     MY_PC_IP = args.ip_out
     MY_PC_PORT_F_CNN = args.port_f_cnn
     MY_PC_PORT_S_CNN = args.port_s_cnn
+    MY_PC_PORT_M_CNN = args.port_m_cnn
     SPIF_PORT = 3332
     POP_LABEL = "target"
     RUN_TIME = 1000*60*args.runtime
     CHIP_F = (0, 0)
     CHIP_S = (16, 8)
+    CHIP_M = (32, 16)
 
 
     P_SHIFT = 15
@@ -276,10 +281,13 @@ if __name__ == '__main__':
     def forward_s_cnn_data(label, spikes):
         forward_data(spikes, MY_PC_IP, MY_PC_PORT_S_CNN)
 
+    def forward_m_cnn_data(label, spikes):
+        forward_data(spikes, MY_PC_IP, MY_PC_PORT_M_CNN)
+
 
     print("Creating Network ... ")
 
-    f_cell_params = {'tau_m': args.tau_m/math.log(2),
+    f_cell_params = {'tau_m': 1,
                      'tau_syn_E': 0.1,
                      'tau_syn_I': 0.1,
                      'v_rest': -65.0,
@@ -290,7 +298,18 @@ if __name__ == '__main__':
                      'i_offset': 0.0
                      }
 
-    s_cell_params = {'tau_m': args.tau_m*args.ratio/math.log(2),
+    m_cell_params = {'tau_m': 8,
+                     'tau_syn_E': 0.1,
+                     'tau_syn_I': 0.1,
+                     'v_rest': -65.0,
+                     'v_reset': -65.0,
+                     'v_thresh': -60.0,
+                     'tau_refrac': 0.0, # 0.1 originally
+                     'cm': 1,
+                     'i_offset': 0.0
+                     }
+
+    s_cell_params = {'tau_m': 64,
                      'tau_syn_E': 0.1,
                      'tau_syn_I': 0.1,
                      'v_rest': -65.0,
@@ -305,10 +324,10 @@ if __name__ == '__main__':
     p.setup(timestep=1.0, n_boards_required=24)
 
 
-    IN_POP_LABEL_A = "input_a"
-    IN_POP_LABEL_B = "input_b"
+    IN_POP_LABEL = "input_a"
     F_CNN_POP_LABEL = "f_cnn"
     S_CNN_POP_LABEL = "s_cnn"
+    M_CNN_POP_LABEL = "m_cnn"
 
     celltype = p.IF_curr_exp
     p.set_number_of_neurons_per_core(celltype, (NPC_X, NPC_Y))
@@ -318,21 +337,30 @@ if __name__ == '__main__':
     p_spif_virtual_a = p.Population(WIDTH * HEIGHT, p.external_devices.SPIFRetinaDevice(
                                     pipe=0, width=WIDTH, height=HEIGHT,
                                     sub_width=SUB_WIDTH, sub_height=SUB_HEIGHT, 
-                                    chip_coords=CHIP_F), label=IN_POP_LABEL_A)
+                                    chip_coords=CHIP_F), label=IN_POP_LABEL)
 
-    # Setting up Fast Convolutional Layer
+    # Setting up Fast (high-speed) Convolutional Layer
     f_cnn_conn = p.ConvolutionConnector(kernel_weights=f_kernel)
     f_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**f_cell_params),
                             structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=F_CNN_POP_LABEL)
 
-    # Setting up Slow Convolutional Layer
+    # Setting up Mid (medium-speed) Convolutional Layer
+    m_cnn_conn = p.ConvolutionConnector(kernel_weights=m_kernel)
+    m_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**m_cell_params),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_CNN_POP_LABEL)
+
+    # Setting up Slow (low-speed) Convolutional Layer
     s_cnn_conn = p.ConvolutionConnector(kernel_weights=s_kernel)
     s_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**s_cell_params),
                             structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_CNN_POP_LABEL)
 
+
+
     # Projection from SPIF virtual to CNN populations
     p.Projection(p_spif_virtual_a, f_cnn_pop, f_cnn_conn, p.Convolution())
+    p.Projection(p_spif_virtual_a, m_cnn_pop, m_cnn_conn, p.Convolution())
     p.Projection(p_spif_virtual_a, s_cnn_pop, s_cnn_conn, p.Convolution())
+    
 
 
     # Setting up SPIF Outputs
@@ -342,18 +370,24 @@ if __name__ == '__main__':
         database_notify_port_num=spif_f_lsc.local_port, chip_coords=CHIP_F), label="f_cnn_output")
     p.external_devices.activate_live_output_to(f_cnn_pop, spif_f_cnn_output)
 
-    spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_CNN_POP_LABEL], SPIF_IP_S, SPIF_PORT)
+    spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_CNN_POP_LABEL], SPIF_IP_M, SPIF_PORT)
     spif_s_lsc.add_receive_callback(S_CNN_POP_LABEL, forward_s_cnn_data)
     spif_s_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-        database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="s_cnn_output")
+        database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_M), label="s_cnn_output")
     p.external_devices.activate_live_output_to(s_cnn_pop, spif_s_cnn_output)
+
+
+    spif_m_lsc = p.external_devices.SPIFLiveSpikesConnection([M_CNN_POP_LABEL], SPIF_IP_S, SPIF_PORT)
+    spif_m_lsc.add_receive_callback(M_CNN_POP_LABEL, forward_m_cnn_data)
+    spif_m_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+        database_notify_port_num=spif_m_lsc.local_port, chip_coords=CHIP_S), label="m_cnn_output")
+    p.external_devices.activate_live_output_to(m_cnn_pop, spif_m_cnn_output)
    
 
     try:
         time.sleep(1)
         print("List of parameters:")
         print(f"\tNPC: {NPC_X} x {NPC_Y}")
-        print(f"\tInput {WIDTH} x {HEIGHT}")
         print(f"\tOutput {OUT_WIDTH} x {OUT_HEIGHT}")
         print(f"\tKernel Size: {len(f_kernel)}")
         print(f"\tKernel Sum: {abs(round(np.sum(f_kernel),3))}")

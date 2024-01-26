@@ -363,6 +363,7 @@ if __name__ == '__main__':
         time.sleep(1)
         print("List of parameters:")
         print(f"\tNPC: {NPC_X} x {NPC_Y}")
+        print(f"\tInput {WIDTH} x {HEIGHT}")
         print(f"\tOutput {OUT_WIDTH} x {OUT_HEIGHT}")
         print(f"\tKernel Size: {len(f_kernel)}")
         print(f"\tKernel Sum: {abs(round(np.sum(f_kernel),3))}")
