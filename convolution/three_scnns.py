@@ -215,9 +215,9 @@ if __name__ == '__main__':
 
 
     print("Generating Kernel ... ")
-    f_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 2)
-    m_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 2)
-    s_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 2)
+    f_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 2.00)
+    m_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 1.10)
+    s_kernel = make_whole_kernel(args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 0.75)
 
     print("Configuring Infrastructure ... ")
     SUB_WIDTH = 16
@@ -298,7 +298,7 @@ if __name__ == '__main__':
                      'i_offset': 0.0
                      }
 
-    m_cell_params = {'tau_m': 8,
+    m_cell_params = {'tau_m': 11,
                      'tau_syn_E': 0.1,
                      'tau_syn_I': 0.1,
                      'v_rest': -65.0,
