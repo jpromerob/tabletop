@@ -13,6 +13,13 @@ from tools import Dimensions
 from utils import *
 
 
+'''
+This Script:
+ - defines 5 SCNNs (Fast, Medium x2, Slow x2)
+ - defines 2 'activity neurons' (medium and fast) 
+ - tries to de-activate the 2nd Medium/Slow SCNNs based on the activity of the 1st Fast/Medium SCNNs
+ * is not working ... can't project single neuron into 2D population without using convolutional connector
+'''
 
 spin_spif_map = {"1": "172.16.223.2",       # rack 1   | spif-00
                  "37": "172.16.223.106",    # b-ip 37  | spif-13
@@ -141,7 +148,6 @@ if __name__ == '__main__':
     m_cell_params = {'tau_m': 11, **common_neuron_params}
     s_cell_params = {'tau_m': 64, **common_neuron_params}
     a_cell_params = f_cell_params
-    x_cell_params  = f_cell_params
 
 
 
@@ -151,14 +157,13 @@ if __name__ == '__main__':
     IN_POP_LABEL = "input_a"
     F_CNN_POP_LABEL = "f_cnn"
     M_CNN_POP_LABEL = "m_cnn"
+    M_MUX_POP_LABEL = "m_mux"
     S_CNN_POP_LABEL = "s_cnn"
+    S_MUX_POP_LABEL = "s_mux"
 
     celltype = p.IF_curr_exp
     p.set_number_of_neurons_per_core(celltype, (NPC_X, NPC_Y))
 
-
-
-    pdb.set_trace()
 
     # Setting up SPIF Input
     p_spif_virtual_a = p.Population(WIDTH * HEIGHT, p.external_devices.SPIFRetinaDevice(
@@ -181,19 +186,40 @@ if __name__ == '__main__':
     s_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**s_cell_params),
                             structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_CNN_POP_LABEL)
 
+
+    # Setting up Mid (medium-speed) Mux-ed Layer
+    m_mux_conn = p.ConvolutionConnector(kernel_weights=m_kernel)
+    m_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**m_cell_params),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_MUX_POP_LABEL)
+
+    # Setting up Slow (low-speed) Mux-ed Layer
+    s_mux_conn = p.ConvolutionConnector(kernel_weights=s_kernel)
+    s_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**s_cell_params),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_MUX_POP_LABEL)
+
+
     # Creating activity neurons
     f_act_neuron = p.Population(1, celltype(**a_cell_params), label="f_act_neuron")
     m_act_neuron = p.Population(1, celltype(**a_cell_params), label="m_act_neuron")
+
+
 
     # Projection from SPIF virtual to CNN populations
     p.Projection(p_spif_virtual_a, f_cnn_pop, f_cnn_conn, p.Convolution())
     p.Projection(p_spif_virtual_a, m_cnn_pop, m_cnn_conn, p.Convolution())
     p.Projection(p_spif_virtual_a, s_cnn_pop, s_cnn_conn, p.Convolution())
+    p.Projection(p_spif_virtual_a, m_mux_pop, m_cnn_conn, p.Convolution())
+    p.Projection(p_spif_virtual_a, s_mux_pop, s_cnn_conn, p.Convolution())
+
+
 
     # Projection of SCNN into activity neurons
     act_syn = p.StaticSynapse(weight=1, delay=0)
     p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=act_syn)
     p.Projection(m_cnn_pop, m_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=act_syn)
+    
+    p.Projection(f_act_neuron, m_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=act_syn)
+    # p.Projection(m_act_neuron, s_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=act_syn)
     
 
     # Setting up SPIF Outputs (lsc: live-spikes-connection)
@@ -203,17 +229,30 @@ if __name__ == '__main__':
         database_notify_port_num=spif_f_lsc.local_port, chip_coords=CHIP_F), label="f_cnn_output")
     p.external_devices.activate_live_output_to(f_cnn_pop, spif_f_cnn_output)
 
-    spif_m_lsc = p.external_devices.SPIFLiveSpikesConnection([M_CNN_POP_LABEL], SPIF_IP_M, SPIF_PORT)
-    spif_m_lsc.add_receive_callback(M_CNN_POP_LABEL, forward_m_cnn_data)
-    spif_m_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-        database_notify_port_num=spif_m_lsc.local_port, chip_coords=CHIP_M), label="m_cnn_output")
-    p.external_devices.activate_live_output_to(m_cnn_pop, spif_m_cnn_output)
+    # spif_m_lsc = p.external_devices.SPIFLiveSpikesConnection([M_CNN_POP_LABEL], SPIF_IP_M, SPIF_PORT)
+    # spif_m_lsc.add_receive_callback(M_CNN_POP_LABEL, forward_m_cnn_data)
+    # spif_m_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+    #     database_notify_port_num=spif_m_lsc.local_port, chip_coords=CHIP_M), label="m_cnn_output")
+    # p.external_devices.activate_live_output_to(m_cnn_pop, spif_m_cnn_output)
    
-    spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_CNN_POP_LABEL], SPIF_IP_S, SPIF_PORT)
-    spif_s_lsc.add_receive_callback(S_CNN_POP_LABEL, forward_s_cnn_data)
-    spif_s_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-        database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="s_cnn_output")
-    p.external_devices.activate_live_output_to(s_cnn_pop, spif_s_cnn_output)
+    # spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_CNN_POP_LABEL], SPIF_IP_S, SPIF_PORT)
+    # spif_s_lsc.add_receive_callback(S_CNN_POP_LABEL, forward_s_cnn_data)
+    # spif_s_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+    #     database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="s_cnn_output")
+    # p.external_devices.activate_live_output_to(s_cnn_pop, spif_s_cnn_output)
+
+    spif_m_lsc = p.external_devices.SPIFLiveSpikesConnection([M_MUX_POP_LABEL], SPIF_IP_M, SPIF_PORT)
+    spif_m_lsc.add_receive_callback(M_MUX_POP_LABEL, forward_m_cnn_data)
+    spif_m_mux_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+        database_notify_port_num=spif_m_lsc.local_port, chip_coords=CHIP_M), label="m_mux_output")
+    p.external_devices.activate_live_output_to(m_mux_pop, spif_m_mux_output)
+   
+    spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_MUX_POP_LABEL], SPIF_IP_S, SPIF_PORT)
+    spif_s_lsc.add_receive_callback(S_MUX_POP_LABEL, forward_s_cnn_data)
+    spif_s_mux_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+        database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="s_mux_output")
+    p.external_devices.activate_live_output_to(s_mux_pop, spif_s_mux_output)
+
 
 
     try:

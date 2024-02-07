@@ -14,6 +14,14 @@ from utils import *
 
 
 
+'''
+This Script:
+ - defines 3 SCNNs (Fast, Medium, Slow)
+ - defines 2 'activity neurons' (medium and fast) 
+ - defines 2 mux-ed populations where Medium and Fast are projected (one to one)
+ * is not working ... the mux-ed populations should 'replicate' the original ones but that's not the case ... 
+'''
+
 spin_spif_map = {"1": "172.16.223.2",       # rack 1   | spif-00
                  "37": "172.16.223.106",    # b-ip 37  | spif-13
                  "43": "172.16.223.98",     # b-ip 43  | spif-12
@@ -157,9 +165,6 @@ if __name__ == '__main__':
     p.set_number_of_neurons_per_core(celltype, (NPC_X, NPC_Y))
 
 
-
-    pdb.set_trace()
-
     # Setting up SPIF Input
     p_spif_virtual_a = p.Population(WIDTH * HEIGHT, p.external_devices.SPIFRetinaDevice(
                                     pipe=0, width=WIDTH, height=HEIGHT,
@@ -195,6 +200,25 @@ if __name__ == '__main__':
     p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=act_syn)
     p.Projection(m_cnn_pop, m_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=act_syn)
     
+    M_MUX_POP_LABEL = "m_mux"
+    S_MUX_POP_LABEL = "s_mux"
+
+    # Setting up Mid (medium-speed) Multiplexing Layer
+    m_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_MUX_POP_LABEL)
+
+    # Setting up Slow (low-speed) Multiplexing Layer
+    s_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_MUX_POP_LABEL)
+
+
+
+    # Projection from SCNN to Multiplexing layers
+    mux_syn = p.StaticSynapse(weight=500, delay=0)
+    p.Projection(m_cnn_pop, m_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
+    p.Projection(s_cnn_pop, s_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
+
+
 
     # Setting up SPIF Outputs (lsc: live-spikes-connection)
     spif_f_lsc = p.external_devices.SPIFLiveSpikesConnection([F_CNN_POP_LABEL], SPIF_IP_F, SPIF_PORT)

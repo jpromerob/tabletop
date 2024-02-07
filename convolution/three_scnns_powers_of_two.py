@@ -59,8 +59,8 @@ if __name__ == '__main__':
     print("Configuring Infrastructure ... ")
     SUB_WIDTH = 16
     SUB_HEIGHT = 8
-    WIDTH = dim.fl
-    HEIGHT = dim.fw
+    WIDTH = 256 # 2**math.ceil(math.log(dim.fl,2)) 
+    HEIGHT = dim.fw+3
     OUT_WIDTH = WIDTH-len(f_kernel)+1
     OUT_HEIGHT = HEIGHT-len(f_kernel)+1
 
@@ -76,8 +76,8 @@ if __name__ == '__main__':
         if (x*y >= 4*(WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
             break
     
-    NPC_X = x*2
-    NPC_Y = y
+    NPC_X = 4#x*2
+    NPC_Y = 4#y
 
     MY_PC_IP = args.ip_out
     MY_PC_PORT_F_CNN = args.port_f_cnn
@@ -148,23 +148,21 @@ if __name__ == '__main__':
     p.setup(timestep=1.0, n_boards_required=24)
 
 
-    IN_POP_LABEL = "input_a"
-    F_CNN_POP_LABEL = "f_cnn"
-    M_CNN_POP_LABEL = "m_cnn"
-    S_CNN_POP_LABEL = "s_cnn"
-
     celltype = p.IF_curr_exp
     p.set_number_of_neurons_per_core(celltype, (NPC_X, NPC_Y))
 
 
-
-    pdb.set_trace()
+    IN_POP_LABEL = "input"
 
     # Setting up SPIF Input
     p_spif_virtual_a = p.Population(WIDTH * HEIGHT, p.external_devices.SPIFRetinaDevice(
                                     pipe=0, width=WIDTH, height=HEIGHT,
                                     sub_width=SUB_WIDTH, sub_height=SUB_HEIGHT, 
                                     chip_coords=CHIP_F), label=IN_POP_LABEL)
+
+    F_CNN_POP_LABEL = "f_cnn"
+    M_CNN_POP_LABEL = "m_cnn"
+    S_CNN_POP_LABEL = "s_cnn"
 
     # Setting up Fast (high-speed) Convolutional Layer
     f_cnn_conn = p.ConvolutionConnector(kernel_weights=f_kernel)
@@ -181,39 +179,88 @@ if __name__ == '__main__':
     s_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**s_cell_params),
                             structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_CNN_POP_LABEL)
 
-    # Creating activity neurons
-    f_act_neuron = p.Population(1, celltype(**a_cell_params), label="f_act_neuron")
-    m_act_neuron = p.Population(1, celltype(**a_cell_params), label="m_act_neuron")
+
+    M_MUX_POP_LABEL = "m_mux"
+    S_MUX_POP_LABEL = "s_mux"
+    MERGED_POP_LABEL = "merged"
+
+    # # Setting up Mid (medium-speed) Multiplexing Layer
+    m_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_MUX_POP_LABEL)
+
+    # Setting up Slow (low-speed) Multiplexing Layer
+    s_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_MUX_POP_LABEL)
+
+
+    f_act_neuron = p.Population(16, celltype(**a_cell_params),
+                            structure=p.Grid2D(4 / 4), label="f_act_neuron")
+
+    m_act_neuron = p.Population(16, celltype(**a_cell_params),
+                            structure=p.Grid2D(4 / 4), label="m_act_neuron")
+
+
+    merged_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=MERGED_POP_LABEL)
+
 
     # Projection from SPIF virtual to CNN populations
     p.Projection(p_spif_virtual_a, f_cnn_pop, f_cnn_conn, p.Convolution())
     p.Projection(p_spif_virtual_a, m_cnn_pop, m_cnn_conn, p.Convolution())
     p.Projection(p_spif_virtual_a, s_cnn_pop, s_cnn_conn, p.Convolution())
-
-    # Projection of SCNN into activity neurons
-    act_syn = p.StaticSynapse(weight=1, delay=0)
-    p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=act_syn)
-    p.Projection(m_cnn_pop, m_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=act_syn)
     
 
-    # Setting up SPIF Outputs (lsc: live-spikes-connection)
-    spif_f_lsc = p.external_devices.SPIFLiveSpikesConnection([F_CNN_POP_LABEL], SPIF_IP_F, SPIF_PORT)
-    spif_f_lsc.add_receive_callback(F_CNN_POP_LABEL, forward_f_cnn_data)
-    spif_f_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-        database_notify_port_num=spif_f_lsc.local_port, chip_coords=CHIP_F), label="f_cnn_output")
-    p.external_devices.activate_live_output_to(f_cnn_pop, spif_f_cnn_output)
+    # Projection from SCNN to mux-ed populations
+    mux_syn = p.StaticSynapse(weight=100, delay=0)
+    p.Projection(m_cnn_pop, m_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
+    p.Projection(s_cnn_pop, s_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
 
-    spif_m_lsc = p.external_devices.SPIFLiveSpikesConnection([M_CNN_POP_LABEL], SPIF_IP_M, SPIF_PORT)
-    spif_m_lsc.add_receive_callback(M_CNN_POP_LABEL, forward_m_cnn_data)
-    spif_m_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-        database_notify_port_num=spif_m_lsc.local_port, chip_coords=CHIP_M), label="m_cnn_output")
-    p.external_devices.activate_live_output_to(m_cnn_pop, spif_m_cnn_output)
+
+    # Inhibiting mux-ed populations using activity neurons
+    exc_syn = p.StaticSynapse(weight=20, delay=0)
+    inh_syn = p.StaticSynapse(weight=10, delay=0)
+
+    # Fast SCNN inhibits Medium mux-ed population
+    p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)    
+    p.Projection(f_act_neuron, m_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=inh_syn)
+    
+    # Medium SCNN inhibits Slow mux-ed population
+    p.Projection(m_cnn_pop, m_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)
+    p.Projection(m_act_neuron, s_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=inh_syn)
+    
+    # Fast SCNN and mux-ed populations converged into one full output layer
+    out_syn = p.StaticSynapse(weight=100, delay=0)
+    p.Projection(f_cnn_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+    p.Projection(m_mux_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+    p.Projection(s_mux_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+
+
+
+
+    # Setting up SPIF Outputs (lsc: live-spikes-connection)
+    # spif_f_lsc = p.external_devices.SPIFLiveSpikesConnection([F_CNN_POP_LABEL], SPIF_IP_F, SPIF_PORT)
+    # spif_f_lsc.add_receive_callback(F_CNN_POP_LABEL, forward_f_cnn_data)
+    # spif_f_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+    #     database_notify_port_num=spif_f_lsc.local_port, chip_coords=CHIP_F), label="f_cnn_output")
+    # p.external_devices.activate_live_output_to(f_cnn_pop, spif_f_cnn_output)
+
+    # spif_m_lsc = p.external_devices.SPIFLiveSpikesConnection([M_CNN_POP_LABEL], SPIF_IP_M, SPIF_PORT)
+    # spif_m_lsc.add_receive_callback(M_CNN_POP_LABEL, forward_m_cnn_data)
+    # spif_m_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+    #     database_notify_port_num=spif_m_lsc.local_port, chip_coords=CHIP_M), label="m_cnn_output")
+    # p.external_devices.activate_live_output_to(m_cnn_pop, spif_m_cnn_output)
    
-    spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_CNN_POP_LABEL], SPIF_IP_S, SPIF_PORT)
-    spif_s_lsc.add_receive_callback(S_CNN_POP_LABEL, forward_s_cnn_data)
-    spif_s_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-        database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="s_cnn_output")
-    p.external_devices.activate_live_output_to(s_cnn_pop, spif_s_cnn_output)
+    # spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_CNN_POP_LABEL], SPIF_IP_S, SPIF_PORT)
+    # spif_s_lsc.add_receive_callback(S_CNN_POP_LABEL, forward_s_cnn_data)
+    # spif_s_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+    #     database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="s_cnn_output")
+    # p.external_devices.activate_live_output_to(s_cnn_pop, spif_s_cnn_output)
+
+    spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([MERGED_POP_LABEL], SPIF_IP_S, SPIF_PORT)
+    spif_s_lsc.add_receive_callback(MERGED_POP_LABEL, forward_s_cnn_data)
+    spif_merged_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+        database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="merged_output")
+    p.external_devices.activate_live_output_to(merged_pop, spif_merged_output)
 
 
     try:
