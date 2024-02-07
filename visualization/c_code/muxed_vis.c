@@ -38,6 +38,7 @@ float acc_time = 0.001000;
 int x_px[NB_SLICES];
 int y_px[NB_SLICES];
 int ev_count[NB_SLICES];
+struct timespec last_ev_count[NB_SLICES];
 float scale = 1.0;
 bool is_live = false;
 bool is_the_end = false;
@@ -214,6 +215,7 @@ void* updateCnn(void* arg) {
             ssize_t recv_len = recvfrom(sockfd, buffer, sizeof(buffer), 0,
                                     (struct sockaddr *)&client_addr, &client_addr_len);
 
+
             if (recv_len < 0) {
                 perror("recvfrom");
                 exit(1);
@@ -256,6 +258,9 @@ void* updateCnn(void* arg) {
             x_px[screen_id] = sum_idx_x/count_ones;
             y_px[screen_id] = sum_idx_y/count_ones;
             ev_count[screen_id] = count_ones;
+            // time(&last_ev_count[screen_id]);
+            clock_gettime(CLOCK_MONOTONIC, &last_ev_count[screen_id]);
+            ///printf("Time[%d]: %ld\n", screen_id, last_ev_count[screen_id]);
             pthread_mutex_unlock(&xyp_mutex);  
         }        
 
@@ -266,6 +271,27 @@ void* updateCnn(void* arg) {
     return NULL;
 }
 
+void* monitorEvCount(void* arg){
+
+    struct timespec current_t;
+    double t_diff_ms[NB_NETS];
+
+    while(1){
+    clock_gettime(CLOCK_MONOTONIC, &current_t);
+        pthread_mutex_lock(&xyp_mutex);  
+        for(int screen_id = 0; screen_id < NB_NETS; screen_id++){
+            t_diff_ms[screen_id] = (current_t.tv_sec - last_ev_count[screen_id].tv_sec) * 1000.0 +
+                              (current_t.tv_nsec - last_ev_count[screen_id].tv_nsec) / 1e6;
+            
+            if(t_diff_ms[screen_id] > 20){
+                ev_count[screen_id] = 0;
+            }
+        }
+        // printf("Diff: %ld | %ld | %ld | %ld\n", current_t, last_ev_count[0], last_ev_count[1], last_ev_count[2]);
+        // printf("Diff: %f | %f | %f\n", t_diff_ms[0], t_diff_ms[1], t_diff_ms[2]);
+        pthread_mutex_unlock(&xyp_mutex);  
+    }
+}
 
 void* updateShared(void* arg) {
 
@@ -293,9 +319,9 @@ void* renderMatrix(void* arg) {
 
     SDL_Init(SDL_INIT_VIDEO);
 
-    SDL_Window* window = SDL_CreateWindow("Air Hockey", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, scale*WINDOW_WIDTH, scale*WINDOW_HEIGHT, SDL_WINDOW_SHOWN);
+    SDL_Window* window = SDL_CreateWindow("Air Hockey", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, scale*WINDOW_WIDTH, scale*SLICE_HEIGHT, SDL_WINDOW_SHOWN);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    SDL_Texture* matrixTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WINDOW_WIDTH, WINDOW_HEIGHT);
+    SDL_Texture* matrixTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WINDOW_WIDTH, SLICE_HEIGHT);
 
 
     bool local_end = false;
@@ -338,6 +364,8 @@ void* renderMatrix(void* arg) {
         memcpy(local_ev_count, ev_count, sizeof(int) * NB_SLICES);
         pthread_mutex_unlock(&xyp_mutex);  
 
+        // printf("Ev Counts: %d | %d | %d \n", local_ev_count[0], local_ev_count[1], local_ev_count[2]);
+
 
         
         mux_id = NB_NETS-1;
@@ -369,32 +397,32 @@ void* renderMatrix(void* arg) {
         int color = black;
 
         // Update the texture pixel data
-        for (int screen_id = 0; screen_id < NB_SLICES; screen_id++) {
-            for (int y = SLICE_HEIGHT*(screen_id+0); y < SLICE_HEIGHT*(screen_id+1); y++) {
-                for (int x = 0; x < WINDOW_WIDTH; x++) {
-                    int index = y * WINDOW_WIDTH + x;
-                    color = black;
-                    if (visual_raw_mat[y][x] >= 1) {
-                        // Set color to green (0xFF00FF00) if the matrix value is 1
-                        color = green*(visual_raw_mat[y][x]/COLOR_HIGH);
-                    } 
-                    if (get_distance(x, y, local_x_px[screen_id], local_y_px[screen_id])<=3){
-                        if(screen_id == 0){
-                            color = cyan;
-                        } else if (screen_id == 1) {
-                            color = magenta;
-                        } else if (screen_id == 2){
-                            color = yellow;
-                        } else {
-                            color = mux_color;
-                        }
+        int screen_id = NB_SLICES-1;
+        for (int y = SLICE_HEIGHT*(screen_id+0); y < SLICE_HEIGHT*(screen_id+1); y++) {
+            for (int x = 0; x < WINDOW_WIDTH; x++) {
+                int index = (y-screen_id*SLICE_HEIGHT) * WINDOW_WIDTH + x;
+                color = black;
+                if (visual_raw_mat[y][x] >= 1) {
+                    // Set color to green (0xFF00FF00) if the matrix value is 1
+                    color = green*(visual_raw_mat[y][x]/COLOR_HIGH);
+                } 
+                if (get_distance(x, y, local_x_px[screen_id], local_y_px[screen_id])<=1){
+                    if(screen_id == 0){
+                        color = cyan;
+                    } else if (screen_id == 1) {
+                        color = magenta;
+                    } else if (screen_id == 2){
+                        color = yellow;
+                    } else {
+                        color = mux_color;
                     }
-                    if (visual_cnn_mat[y][x] >= 1) {
-                        // Set color to green (0xFF00FF00) if the matrix value is 1
-                        color = red*(visual_cnn_mat[y][x]/COLOR_HIGH);
-                    } 
-                    ((Uint32*)pixels)[index] = color + base;
+                    // color = red;
                 }
+                if (visual_cnn_mat[y][x] >= 1) {
+                    // Set color to green (0xFF00FF00) if the matrix value is 1
+                    color = red*(visual_cnn_mat[y][x]/COLOR_HIGH);
+                } 
+                ((Uint32*)pixels)[index] = color + base;
             }
         }
 
@@ -441,7 +469,7 @@ int main(int argc, char *argv[]) {
     memset(emptyMatrix, 0, sizeof(int) * WINDOW_WIDTH * WINDOW_HEIGHT);
 
     pthread_t updateRawThread, updateSharedThread, updateCnnThreads[NB_NETS];
-    pthread_t renderThread;
+    pthread_t renderThread, timerThread;
 
 
     // Create threads
@@ -451,6 +479,7 @@ int main(int argc, char *argv[]) {
     }
     pthread_create(&updateSharedThread, NULL, updateShared, NULL);
     pthread_create(&renderThread, NULL, renderMatrix, NULL);
+    pthread_create(&timerThread, NULL, monitorEvCount, NULL);
 
     // Wait for threads to finish (this will never happen in this example)
     pthread_join(updateRawThread, NULL);
@@ -459,6 +488,7 @@ int main(int argc, char *argv[]) {
     }
     pthread_join(updateSharedThread, NULL);
     pthread_join(renderThread, NULL);
+    pthread_join(timerThread, NULL);
 
     // Clean up mutex
     pthread_mutex_destroy(&raw_mutex);
