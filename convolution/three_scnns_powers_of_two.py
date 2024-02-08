@@ -59,8 +59,8 @@ if __name__ == '__main__':
     print("Configuring Infrastructure ... ")
     SUB_WIDTH = 16
     SUB_HEIGHT = 8
-    WIDTH = 256 # 2**math.ceil(math.log(dim.fl,2)) 
-    HEIGHT = dim.fw+3
+    WIDTH = 64 #2**math.ceil(math.log(dim.fl,2)) 
+    HEIGHT = 64 #+3
     OUT_WIDTH = WIDTH-len(f_kernel)+1
     OUT_HEIGHT = HEIGHT-len(f_kernel)+1
 
@@ -76,8 +76,8 @@ if __name__ == '__main__':
         if (x*y >= 4*(WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
             break
     
-    NPC_X = 4#x*2
-    NPC_Y = 4#y
+    NPC_X = x*2
+    NPC_Y = y
 
     MY_PC_IP = args.ip_out
     MY_PC_PORT_F_CNN = args.port_f_cnn
@@ -180,59 +180,68 @@ if __name__ == '__main__':
                             structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_CNN_POP_LABEL)
 
 
-    M_MUX_POP_LABEL = "m_mux"
-    S_MUX_POP_LABEL = "s_mux"
-    MERGED_POP_LABEL = "merged"
-
-    # # Setting up Mid (medium-speed) Multiplexing Layer
-    m_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
-                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_MUX_POP_LABEL)
-
-    # Setting up Slow (low-speed) Multiplexing Layer
-    s_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
-                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_MUX_POP_LABEL)
-
-
-    f_act_neuron = p.Population(16, celltype(**a_cell_params),
-                            structure=p.Grid2D(4 / 4), label="f_act_neuron")
-
-    m_act_neuron = p.Population(16, celltype(**a_cell_params),
-                            structure=p.Grid2D(4 / 4), label="m_act_neuron")
-
-
-    merged_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
-                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=MERGED_POP_LABEL)
-
 
     # Projection from SPIF virtual to CNN populations
     p.Projection(p_spif_virtual_a, f_cnn_pop, f_cnn_conn, p.Convolution())
     p.Projection(p_spif_virtual_a, m_cnn_pop, m_cnn_conn, p.Convolution())
     p.Projection(p_spif_virtual_a, s_cnn_pop, s_cnn_conn, p.Convolution())
     
+    muxed = True
+    merged = True
 
-    # Projection from SCNN to mux-ed populations
-    mux_syn = p.StaticSynapse(weight=100, delay=0)
-    p.Projection(m_cnn_pop, m_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
-    p.Projection(s_cnn_pop, s_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
+    if merged:
+        MERGED_POP_LABEL = "merged"
+        
+        merged_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                                structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=MERGED_POP_LABEL)
+        # Fast SCNN and mux-ed populations converged into one full output layer
+        out_syn = p.StaticSynapse(weight=100, delay=0)
+        p.Projection(f_cnn_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+        
+        if muxed:
+
+            M_MUX_POP_LABEL = "m_mux"
+            S_MUX_POP_LABEL = "s_mux"
+
+            # # Setting up Mid (medium-speed) Multiplexing Layer
+            m_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                                    structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_MUX_POP_LABEL)
+
+            # Setting up Slow (low-speed) Multiplexing Layer
+            s_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                                    structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_MUX_POP_LABEL)
 
 
-    # Inhibiting mux-ed populations using activity neurons
-    exc_syn = p.StaticSynapse(weight=20, delay=0)
-    inh_syn = p.StaticSynapse(weight=10, delay=0)
+            f_act_neuron = p.Population(16, celltype(**a_cell_params),
+                                    structure=p.Grid2D(4 / 4), label="f_act_neuron")
 
-    # Fast SCNN inhibits Medium mux-ed population
-    p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)    
-    p.Projection(f_act_neuron, m_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=inh_syn)
-    
-    # Medium SCNN inhibits Slow mux-ed population
-    p.Projection(m_cnn_pop, m_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)
-    p.Projection(m_act_neuron, s_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=inh_syn)
-    
-    # Fast SCNN and mux-ed populations converged into one full output layer
-    out_syn = p.StaticSynapse(weight=100, delay=0)
-    p.Projection(f_cnn_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
-    p.Projection(m_mux_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
-    p.Projection(s_mux_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+            m_act_neuron = p.Population(16, celltype(**a_cell_params),
+                                    structure=p.Grid2D(4 / 4), label="m_act_neuron")
+
+
+            # Projection from SCNN to mux-ed populations
+            mux_syn = p.StaticSynapse(weight=100, delay=0)
+            p.Projection(m_cnn_pop, m_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
+            p.Projection(s_cnn_pop, s_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
+
+
+            # Inhibiting mux-ed populations using activity neurons
+            exc_syn = p.StaticSynapse(weight=20, delay=0)
+            inh_syn = p.StaticSynapse(weight=30, delay=0)
+
+            # Fast SCNN inhibits Medium mux-ed population
+            p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)    
+            p.Projection(f_act_neuron, m_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=inh_syn)
+            
+            # Medium SCNN inhibits Slow mux-ed population
+            p.Projection(m_cnn_pop, m_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)
+            p.Projection(m_act_neuron, s_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=inh_syn)
+            
+            # Merging muxed pops 
+            p.Projection(m_mux_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+            p.Projection(s_mux_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+
+            print("\n\n\n MUXING \n\n\n")
 
 
 

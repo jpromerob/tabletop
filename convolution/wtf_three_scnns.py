@@ -179,20 +179,11 @@ if __name__ == '__main__':
     s_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**s_cell_params),
                             structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_CNN_POP_LABEL)
 
-    # Creating activity neurons
-    f_act_neuron = p.Population(1, celltype(**a_cell_params), label="f_act_neuron")
-    m_act_neuron = p.Population(1, celltype(**a_cell_params), label="m_act_neuron")
-
     # Projection from SPIF virtual to CNN populations
     p.Projection(p_spif_virtual_a, f_cnn_pop, f_cnn_conn, p.Convolution())
     p.Projection(p_spif_virtual_a, m_cnn_pop, m_cnn_conn, p.Convolution())
     p.Projection(p_spif_virtual_a, s_cnn_pop, s_cnn_conn, p.Convolution())
 
-    # Projection of SCNN into activity neurons
-    act_syn = p.StaticSynapse(weight=1, delay=0)
-    p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=act_syn)
-    p.Projection(m_cnn_pop, m_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=act_syn)
-    
 
     # Setting up SPIF Outputs (lsc: live-spikes-connection)
     spif_f_lsc = p.external_devices.SPIFLiveSpikesConnection([F_CNN_POP_LABEL], SPIF_IP_F, SPIF_PORT)
