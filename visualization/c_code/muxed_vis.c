@@ -15,6 +15,7 @@
 #define NB_NETS 3
 #define NB_SLICES (NB_NETS + 1)
 #define EV_COUNT_THRESHOLD 1
+#define MAX_DELTA 20 // 10 pixels
 
 #define WINDOW_WIDTH 280
 #define SLICE_HEIGHT 181
@@ -35,6 +36,10 @@ int visual_raw_mat[WINDOW_HEIGHT][WINDOW_WIDTH]; // matrix used by render (raw)
 int visual_cnn_mat[WINDOW_HEIGHT][WINDOW_WIDTH]; // matrix used by render (scnn)
 
 float acc_time = 0.001000;
+int cur_x = WINDOW_WIDTH/2;
+int cur_y = SLICE_HEIGHT/2;
+int mem_x = WINDOW_WIDTH/2;
+int mem_y = SLICE_HEIGHT*(NB_SLICES-1)+SLICE_HEIGHT/2;
 int x_px[NB_SLICES];
 int y_px[NB_SLICES];
 int ev_count[NB_SLICES];
@@ -254,9 +259,10 @@ void* updateCnn(void* arg) {
 
         
         if(count_ones > 0) {
-            pthread_mutex_lock(&xyp_mutex);  
+            pthread_mutex_lock(&xyp_mutex); 
             x_px[screen_id] = sum_idx_x/count_ones;
-            y_px[screen_id] = sum_idx_y/count_ones;
+            y_px[screen_id] = sum_idx_y/count_ones; 
+
             ev_count[screen_id] = count_ones;
             // time(&last_ev_count[screen_id]);
             clock_gettime(CLOCK_MONOTONIC, &last_ev_count[screen_id]);
@@ -376,10 +382,23 @@ void* renderMatrix(void* arg) {
             }
         }
 
+
+
         memcpy(visual_cnn_mat[SLICE_HEIGHT*(NB_SLICES-1)], shared_cnn_mat[SLICE_HEIGHT*mux_id], sizeof(int) * WINDOW_WIDTH * SLICE_HEIGHT);
         local_x_px[NB_SLICES-1] = local_x_px[mux_id];
         local_y_px[NB_SLICES-1] = local_y_px[mux_id]-mux_id*SLICE_HEIGHT+NB_NETS*SLICE_HEIGHT;
                
+
+        cur_x = local_x_px[NB_SLICES-1];
+        cur_y = local_y_px[NB_SLICES-1];
+        if(get_distance(cur_x, cur_y, mem_x, mem_y)> MAX_DELTA){
+            cur_x = mem_x;
+            cur_y = mem_y;
+        }
+        mem_x = cur_x;
+        mem_y = cur_y;
+        // printf("Current: x=%d | y=%d\n", cur_x, cur_y);
+
         int mux_color;
         if(mux_id == 0){
             mux_color = cyan;
@@ -406,18 +425,20 @@ void* renderMatrix(void* arg) {
                     // Set color to green (0xFF00FF00) if the matrix value is 1
                     color = green*(visual_raw_mat[y][x]/COLOR_HIGH);
                 } 
-                if (get_distance(x, y, local_x_px[screen_id], local_y_px[screen_id])<=1){
-                    if(screen_id == 0){
-                        color = cyan;
-                    } else if (screen_id == 1) {
-                        color = magenta;
-                    } else if (screen_id == 2){
-                        color = yellow;
-                    } else {
-                        color = mux_color;
-                    }
-                    // color = red;
-                }
+                // if (get_distance(x, y, local_x_px[screen_id], local_y_px[screen_id])<=3){
+                //     if(screen_id == 0){
+                //         color = cyan;
+                //     } else if (screen_id == 1) {
+                //         color = magenta;
+                //     } else if (screen_id == 2){
+                //         color = yellow;
+                //     } else {
+                //         color = mux_color;
+                //     }
+                // }
+                // if (get_distance(x, y, cur_x, cur_y)<=3){
+                //     color = red;
+                // }
                 if (visual_cnn_mat[y][x] >= 1) {
                     // Set color to green (0xFF00FF00) if the matrix value is 1
                     color = red*(visual_cnn_mat[y][x]/COLOR_HIGH);
