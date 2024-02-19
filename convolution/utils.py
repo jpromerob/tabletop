@@ -3,6 +3,7 @@ import math
 import paramiko
 import select
 import sys
+import pdb
 import csv
 import matplotlib.pyplot as plt
 
@@ -166,3 +167,9 @@ def make_whole_kernel(name, ip_out, k_sz, hs, w_scaler, thickness, fs_ratio):
     print("\n")
         
     return kernel
+
+def div_eight(original_nb):
+    new_nb = math.ceil(original_nb/8)*8
+    return new_nb
+
+# def set_kernels():

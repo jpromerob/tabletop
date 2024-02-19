@@ -27,7 +27,7 @@ def parse_args():
 
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
     parser.add_argument('-t', '--runtime', type=int, help="Runtime in [m]", default=240)
-    parser.add_argument('-r', '--resolution', type=int, help="Max X,Y resolution", default=64)
+    parser.add_argument('-r', '--resolution', type=int, help="Max X,Y resolution", default=512)
 
     parser.add_argument('-ip', '--ip-out', type= str, help="IP out", default="172.16.222.30")
     parser.add_argument('-pf', '--port-f-cnn', type= int, help="Port Out (fast)", default=3331)
@@ -62,7 +62,7 @@ if __name__ == '__main__':
     SUB_WIDTH = 16
     SUB_HEIGHT = 8
     WIDTH = min(args.resolution, 2**math.ceil(math.log(dim.fl,2)))
-    HEIGHT = min(args.resolution,dim.fw)
+    HEIGHT = div_eight(min(args.resolution,dim.fw))
     OUT_WIDTH = WIDTH-len(f_kernel)+1
     OUT_HEIGHT = HEIGHT-len(f_kernel)+1
 
@@ -72,13 +72,13 @@ if __name__ == '__main__':
     for i in pow_2:
         y = 2**i
         x = y
-        if (x*y >= 4*(WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
+        if (x*y >= 6*(WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
             break
         x = 2*y
-        if (x*y >= 4*(WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
+        if (x*y >= 6*(WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
             break
     
-    NPC_X = x*2
+    NPC_X = x
     NPC_Y = y
 
     MY_PC_IP = args.ip_out
@@ -160,7 +160,7 @@ if __name__ == '__main__':
     p_spif_virtual_a = p.Population(WIDTH * HEIGHT, p.external_devices.SPIFRetinaDevice(
                                     pipe=0, width=WIDTH, height=HEIGHT,
                                     sub_width=SUB_WIDTH, sub_height=SUB_HEIGHT, 
-                                    chip_coords=CHIP_S), label=IN_POP_LABEL)
+                                    chip_coords=CHIP_F), label=IN_POP_LABEL)
 
     F_CNN_POP_LABEL = "f_cnn"
     M_CNN_POP_LABEL = "m_cnn"
@@ -228,9 +228,8 @@ if __name__ == '__main__':
 
 
             # Inhibiting mux-ed populations using activity neurons
-            act_scaler=0.5
-            exc_syn = p.StaticSynapse(weight=30*act_scaler, delay=0) # Exciting activity neuron
-            inh_syn = p.StaticSynapse(weight=50*act_scaler, delay=0) 
+            exc_syn = p.StaticSynapse(weight=30, delay=0)
+            inh_syn = p.StaticSynapse(weight=50, delay=0)
 
             # Fast SCNN inhibits Medium mux-ed population
             p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)    

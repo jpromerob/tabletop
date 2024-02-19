@@ -36,7 +36,7 @@ def parse_args():
 
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.4) 
-    parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=2)
+    parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=1)
     
     return parser.parse_args()
 
@@ -160,7 +160,7 @@ if __name__ == '__main__':
     p_spif_virtual_a = p.Population(WIDTH * HEIGHT, p.external_devices.SPIFRetinaDevice(
                                     pipe=0, width=WIDTH, height=HEIGHT,
                                     sub_width=SUB_WIDTH, sub_height=SUB_HEIGHT, 
-                                    chip_coords=CHIP_S), label=IN_POP_LABEL)
+                                    chip_coords=CHIP_F), label=IN_POP_LABEL)
 
     F_CNN_POP_LABEL = "f_cnn"
     M_CNN_POP_LABEL = "m_cnn"
@@ -228,9 +228,8 @@ if __name__ == '__main__':
 
 
             # Inhibiting mux-ed populations using activity neurons
-            act_scaler=0.5
-            exc_syn = p.StaticSynapse(weight=30*act_scaler, delay=0) # Exciting activity neuron
-            inh_syn = p.StaticSynapse(weight=50*act_scaler, delay=0) 
+            exc_syn = p.StaticSynapse(weight=30, delay=0)
+            inh_syn = p.StaticSynapse(weight=50, delay=0)
 
             # Fast SCNN inhibits Medium mux-ed population
             p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)    
