@@ -6,19 +6,19 @@ import pickle
 
 class Dimensions:
     def __init__(self, l, w, il, iw, d2ex, d2ey, gs, gd, cmr, hs):
-        self.l = int(l*hs)
-        self.w = int(w*hs)
+        self.l = int(l)
+        self.w = int(w)
         self.il = int(il*hs) # inner length (between LEDs)
         self.iw = int(iw*hs) # inner width (between LEDs)
         self.d2ex = int(d2ex*hs) # distance from LED to edge (x axis)
         self.d2ey = int(d2ey*hs) # distance from LED to edge (y axis)
-        self.ml = int((self.l-self.il)/2)
-        self.mw = int((self.w-self.iw)/2)
+        # self.ml = int((self.l-self.il)/2)
+        # self.mw = int((self.w-self.iw)/2)
         self.fl = 2*self.d2ex+self.il
         self.fw = 2*self.d2ey+self.iw
         self.gs = int(gs*hs) # goal size
         self.gd = int(gd*hs) # goal depth
-        self.cmr = int(cmr*hs) # circle mark radius
+        self.pr = int(cmr*hs) # puck radius
         self.hs = hs
 
     def save_to_file(self, filename):
@@ -33,7 +33,7 @@ class Dimensions:
 
 def get_dimensions(nat_res_x, nat_res_y, hom_scale):
 
-    dim = Dimensions(nat_res_x, nat_res_y, 288, 174, 76, 56, 90, 10, 30, hom_scale)
+    dim = Dimensions(nat_res_x, nat_res_y, 288, 174, 76, 56, 90, 10, 20, hom_scale)
     return dim
 
 

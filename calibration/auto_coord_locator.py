@@ -51,6 +51,7 @@ def send_dimensions():
     print(f"File '{local_file_path}' copied to '{remote_file_path}' on {hostname}")
 
 
+
 def find_clusters(compressed_array, radius):
     margin = 2*radius
     cluster_list = []
@@ -64,9 +65,11 @@ def find_clusters(compressed_array, radius):
 
     return cluster_list
 
+
+
+
+
 def find_marker_coordinates(cluster_list, radius):
-
-
 
     margin = 2 *radius
     last_x = -1
@@ -256,10 +259,14 @@ def shall_calibrate(args):
 
 def add_markers(im_acc, radius, points, color):
 
+    radius = radius*2
     for idx in range(len(points)):
         for i in range(-radius, radius+1):
             for j in range(-radius, radius+1):
-                im_acc[points[idx][1]+i, points[idx][0]+j] = color
+                pt_x = points[idx][1]+i
+                pt_y = points[idx][0]+j
+                if(abs(i) == radius or abs(j) == radius):
+                    im_acc[pt_x, pt_y] = color
     
     return im_acc 
 
@@ -317,6 +324,11 @@ if __name__ == '__main__':
 
     dim = get_dimensions(args.res_x, args.res_y, args.hom_scale)
     
+    print(f"Inter-LED distance @ X: {dim.iw}")
+    print(f"Inter-LED distance @ Y: {dim.il}")
+    print(f"Full Width (motor Y): {dim.fl}")
+    print(f"Full Height (motor X): {dim.fw}")
+
     dim.save_to_file('../common/homdim.pkl')
 
     # Step 1: Record the start time
@@ -324,7 +336,6 @@ if __name__ == '__main__':
 
     # os.system("rm cam_lut_homography.csv")
     # os.system("rm *.png")
-    cv2.namedWindow('TableTopTracker')
 
     # Stream events from UDP port 3333 (default)
     frame = np.zeros((args.res_x,args.res_y,3))
@@ -360,8 +371,7 @@ if __name__ == '__main__':
                     if total_sum < args.events:
                         accumulator += frame
                         image = cv2.resize(accumulator.transpose(1,0,2), (math.ceil(args.res_x*args.vis_scale),math.ceil(args.res_y*args.vis_scale)), interpolation = cv2.INTER_AREA)
-                        # cv2.imshow('TableTopTracker', image)
-                        # cv2.waitKey(1)
+                        
                     else:
                         planar_acc = np.sum(accumulator, axis=2)
                         compressed_array = np.where(planar_acc > args.threshold, 1, 0)           
@@ -416,7 +426,7 @@ if __name__ == '__main__':
 
 
 
-            im_mkd = add_markers(im_fix, radius, pts_dst, [0,0,255])
+            im_mkd = add_markers(im_fix, radius, pts_dst, [0, 255,255])
             cv2.imwrite("Corrected.png", im_mkd)
 
             cv2.destroyAllWindows()

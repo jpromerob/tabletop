@@ -11,14 +11,14 @@
 #include <stdbool.h>
 
 #define COLOR_HIGH 1
-#define K_SZ 29
+#define K_SZ 33 // maybe 26?
 #define NB_NETS 3
 #define NB_SLICES (NB_NETS + 1)
 #define EV_COUNT_THRESHOLD 1
 #define MAX_DELTA 20 // 10 pixels
 
-#define WINDOW_WIDTH 280
-#define SLICE_HEIGHT 181
+#define WINDOW_WIDTH 256
+#define SLICE_HEIGHT 164
 #define WINDOW_HEIGHT SLICE_HEIGHT*NB_SLICES
 #define NB_FRAMES 5000
 
@@ -185,7 +185,7 @@ void* updateCnn(void* arg) {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(port_cnn); // Use the same port as in Python
+    server_addr.sin_port = htons(port_cnn); // Use the same port as in Python 
 
     // Bind socket to server address
     if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
@@ -374,7 +374,7 @@ void* renderMatrix(void* arg) {
 
 
         
-        mux_id = NB_NETS-1;
+        mux_id = NB_NETS;
         for(int screen_id = 0; screen_id < NB_NETS; screen_id++){
             if(local_ev_count[screen_id] > EV_COUNT_THRESHOLD){
                 mux_id = screen_id;
@@ -404,8 +404,10 @@ void* renderMatrix(void* arg) {
             mux_color = cyan;
         } else if (mux_id == 1) {
             mux_color = magenta;
-        } else {
+        } else if (mux_id == 2) {
             mux_color = yellow;
+        } else {
+            mux_color = black;
         }
 
         // Lock the texture for writing
@@ -425,22 +427,22 @@ void* renderMatrix(void* arg) {
                     // Set color to green (0xFF00FF00) if the matrix value is 1
                     color = green*(visual_raw_mat[y][x]/COLOR_HIGH);
                 } 
-                // if (get_distance(x, y, local_x_px[screen_id], local_y_px[screen_id])<=3){
-                //     if(screen_id == 0){
-                //         color = cyan;
-                //     } else if (screen_id == 1) {
-                //         color = magenta;
-                //     } else if (screen_id == 2){
-                //         color = yellow;
-                //     } else {
-                //         color = mux_color;
-                //     }
-                // }
+                if (get_distance(x, y, local_x_px[screen_id], local_y_px[screen_id])<=3){
+                    if(screen_id == 0){
+                        color = cyan;
+                    } else if (screen_id == 1) {
+                        color = magenta;
+                    } else if (screen_id == 2){
+                        color = yellow;
+                    } else {
+                        color = mux_color;
+                    }
+                }
                 // if (get_distance(x, y, cur_x, cur_y)<=3){
                 //     color = red;
                 // }
                 if (visual_cnn_mat[y][x] >= 1) {
-                    // Set color to green (0xFF00FF00) if the matrix value is 1
+                    // Set color to green (0xFF00FF00) if the matrix value is 1 
                     color = red*(visual_cnn_mat[y][x]/COLOR_HIGH);
                 } 
                 ((Uint32*)pixels)[index] = color + base;
