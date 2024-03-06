@@ -180,8 +180,8 @@ def modify_lut(homgra, dim, marker_list, radius, args):
     h = homgra #np.loadtxt('homgra.txt')
     
 
-    # Replace 'your_file.csv' with the path to your CSV file
-    csv_file_path = f'cam_lut_undistortion_{args.camera_type}.csv'
+    # load *.csv LUT
+    csv_file_path = f'luts/cam_lut_undistortion_{args.camera_type}.csv'
 
     # Open the CSV file in read mode
     with open(csv_file_path, newline='') as csvfile:
@@ -221,7 +221,7 @@ def modify_lut(homgra, dim, marker_list, radius, args):
         new_data_list.append(element)
 
 
-    csv_file_path = f'cam_lut_homography_{args.camera_type}.csv'
+    csv_file_path = f'luts/cam_lut_homography_{args.camera_type}.csv'
 
     # Open the CSV file in write mode
     with open(csv_file_path, 'w', newline='') as csv_file:
@@ -402,7 +402,7 @@ if __name__ == '__main__':
             im_acc = cv2.resize(10*accumulator.transpose(1,0,2), (math.ceil(args.res_x*args.vis_scale),math.ceil(args.res_y*args.vis_scale)), interpolation = cv2.INTER_AREA)
             for x, y in marker_list:
                 image[y-radius:y+radius, x-radius:x+radius, :] = [0,0,255]
-            cv2.imwrite('Accumulated.png', im_acc)
+            cv2.imwrite('images/Accumulated.png', im_acc)
 
 
 
@@ -413,7 +413,7 @@ if __name__ == '__main__':
 
 
             im_mkd = add_markers(im_acc, radius, pts_src, [0,0,255])
-            cv2.imwrite("Marked.png", im_mkd)
+            cv2.imwrite("images/Marked.png", im_mkd)
 
             
             # Calculate Homography
@@ -427,7 +427,7 @@ if __name__ == '__main__':
 
 
             im_mkd = add_markers(im_fix, radius, pts_dst, [0, 255,255])
-            cv2.imwrite("Corrected.png", im_mkd)
+            cv2.imwrite("images/Corrected.png", im_mkd)
 
             cv2.destroyAllWindows()
 

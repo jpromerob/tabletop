@@ -49,7 +49,7 @@ def build_cmd(args, lut, mode):
 
     else:
         cmd_in = f"input file {args.filename}"
-    cmd_lut = f"resolution {args.res_x} {args.res_y} undistortion {lut}.csv"
+    cmd_lut = f"resolution {args.res_x} {args.res_y} undistortion {lut}"
     cmd = f"{cmd_base} {cmd_in} {cmd_out} {cmd_lut}"
 
     print(f"\n\n {cmd} \n\n")
@@ -73,7 +73,7 @@ def allow_manual_setup(args):
     time.sleep(SLEEPER)
     os.system(f"pkill -f aestream")
 
-    command = build_cmd(args, f"cam_lut_undistortion_{args.camera_type}", "streaming")
+    command = build_cmd(args, f"luts/cam_lut_undistortion_{args.camera_type}.csv", "streaming")
     process = subprocess.Popen(command, shell=True)
     cam_location_in_progress = True
     time.sleep(SLEEPER)
@@ -102,7 +102,7 @@ def enable_calibration(args):
     time.sleep(SLEEPER)
     os.system(f"pkill -f aestream")
 
-    command = build_cmd(args, f"cam_lut_undistortion_{args.camera_type}", "calibration")
+    command = build_cmd(args, f"luts/cam_lut_undistortion_{args.camera_type}.csv", "calibration")
     process = subprocess.Popen(command, shell=True)
     send_signal(args.calibrator_ip, args.port_intercom)
     try:
@@ -121,7 +121,7 @@ def stream_warped_data(args):
 
     os.system(f"pkill -f aestream")
     time.sleep(SLEEPER)
-    os.system(build_cmd(args, f"cam_lut_homography_{args.camera_type}", "streaming"))
+    os.system(build_cmd(args, f"luts/cam_lut_homography_{args.camera_type}.csv", "streaming"))
 
 
 def print_data(args):

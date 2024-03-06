@@ -341,7 +341,7 @@ void* renderMatrix(void* arg) {
         
         pthread_mutex_lock(&end_mutex);  
         local_end = is_the_end;
-        pthread_mutex_unlock(&end_mutex);  
+        pthread_mutex_unlock(&end_mutex);
         
         SDL_Event e;
         while (SDL_PollEvent(&e) != 0) {

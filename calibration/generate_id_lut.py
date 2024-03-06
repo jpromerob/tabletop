@@ -9,7 +9,7 @@ import pdb
 This functions initializes a look-up-table that will store mappings from distorted to undistorted pixels
 '''
 def create_identity_lut(res_x, res_y):
-    filepath = f"identity_lut_{res_x}_{res_y}.csv"
+    filepath = f"luts/identity_lut_{res_x}_{res_y}.csv"
     with open (filepath, 'w', newline='') as csv_file:
         csv_writer = csv.writer(csv_file,delimiter=',')
         
