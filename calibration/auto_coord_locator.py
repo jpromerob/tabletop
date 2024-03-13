@@ -348,9 +348,16 @@ if __name__ == '__main__':
     print(f" - Ports: intercom: {args.port_intercom}")
     print("Waiting for Calibration signal ...")
 
+
+
+
     while(True):
         
-        if shall_calibrate(args):            
+        if shall_calibrate(args):       
+
+            
+            os.system("rm images/*.png")
+            os.system("rm luts/*homography*csv")     
 
             print("Starting new calibration")
 

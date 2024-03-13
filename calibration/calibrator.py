@@ -71,6 +71,10 @@ Once user is 'Happy', the streaming will stop
 '''
 def allow_manual_setup(args):
     time.sleep(SLEEPER)
+
+    os.system(f"rm biases/biases.bias")
+    os.system(f"cp biases/biases_calibration.bias biases/biases.bias")
+
     os.system(f"pkill -f aestream")
 
     command = build_cmd(args, f"luts/cam_lut_undistortion_{args.camera_type}.csv", "streaming")
@@ -100,6 +104,10 @@ This function triggers aestream so auto_coord-locator can do its job
 '''
 def enable_calibration(args):
     time.sleep(SLEEPER)
+
+    os.system(f"rm biases/biases.bias")
+    os.system(f"cp biases/biases_calibration.bias biases/biases.bias")
+
     os.system(f"pkill -f aestream")
 
     command = build_cmd(args, f"luts/cam_lut_undistortion_{args.camera_type}.csv", "calibration")
@@ -118,6 +126,9 @@ def enable_calibration(args):
 This function triggers aestream so the user can see the result of the calibration
 '''
 def stream_warped_data(args):
+
+    os.system(f"rm biases/biases.bias")
+    os.system(f"cp biases/biases_realtime.bias biases/biases.bias")
 
     os.system(f"pkill -f aestream")
     time.sleep(SLEEPER)
