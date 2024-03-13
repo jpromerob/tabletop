@@ -44,14 +44,28 @@ if __name__ == '__main__':
     # Stream events from UDP port 3333 (default)
     frame = np.zeros((res_x,res_y,3))
 
+    kernel = np.load("../common/kernel.npy")
+    # pdb.set_trace()
+
+    k_len = len(kernel)
+    k_offset_x = int(res_x/2-k_len/2)
+    k_offset_y = int(res_y/2-k_len/2)
+
     with aestream.UDPInput((res_x, res_y), device = 'cpu', port=args.port) as stream1:
                 
         while True:
 
 
             frame[0:res_x,0:res_y,1] =  stream1.read().numpy() 
+            frame[k_offset_x:k_offset_x+k_len,k_offset_y:k_offset_y+k_len,2] = kernel
+
             image = cv2.resize(frame.transpose(1,0,2), (new_l, new_w), interpolation = cv2.INTER_AREA)
+            
+            center_x = int(image.shape[1] // 2)
+            center_y = int(image.shape[0] // 2)
+            cv2.circle(image, (center_x, center_y), int(dim.pr*args.scale), [0,255,255], 1)
             cv2.imshow(window_name, image)
+            
             cv2.waitKey(1)
 
 

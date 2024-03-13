@@ -49,7 +49,7 @@ def build_cmd(args, lut, mode):
 
     else:
         cmd_in = f"input file {args.filename}"
-    cmd_lut = f"resolution {args.res_x} {args.res_y} undistortion {lut}.csv"
+    cmd_lut = f"resolution {args.res_x} {args.res_y} undistortion {lut}"
     cmd = f"{cmd_base} {cmd_in} {cmd_out} {cmd_lut}"
 
     print(f"\n\n {cmd} \n\n")
@@ -57,11 +57,27 @@ def build_cmd(args, lut, mode):
     return cmd
 
 
+'''
+This function kill aestream processes currently running
+'''
+def make_sure_dvs_ready(args):
+    os.system(f"pkill -f cam_lut_undistortion_{args.camera_type}.csv")
+    os.system(f"pkill -f cam_lut_homography_{args.camera_type}.csv")
+
+
+'''
+This function triggers aestream so user can adjust camera/table position in real-time
+Once user is 'Happy', the streaming will stop
+'''
 def allow_manual_setup(args):
     time.sleep(SLEEPER)
+
+    os.system(f"rm biases/biases.bias")
+    os.system(f"cp biases/biases_calibration.bias biases/biases.bias")
+
     os.system(f"pkill -f aestream")
 
-    command = build_cmd(args, f"cam_lut_undistortion_{args.camera_type}", "streaming")
+    command = build_cmd(args, f"luts/cam_lut_undistortion_{args.camera_type}.csv", "streaming")
     process = subprocess.Popen(command, shell=True)
     cam_location_in_progress = True
     time.sleep(SLEEPER)
@@ -82,11 +98,19 @@ def allow_manual_setup(args):
     os.system(f"pkill -f cam_lut_undistortion_{args.camera_type}.csv")
     time.sleep(SLEEPER)
 
+
+'''
+This function triggers aestream so auto_coord-locator can do its job
+'''
 def enable_calibration(args):
     time.sleep(SLEEPER)
+
+    os.system(f"rm biases/biases.bias")
+    os.system(f"cp biases/biases_calibration.bias biases/biases.bias")
+
     os.system(f"pkill -f aestream")
 
-    command = build_cmd(args, f"cam_lut_undistortion_{args.camera_type}", "calibration")
+    command = build_cmd(args, f"luts/cam_lut_undistortion_{args.camera_type}.csv", "calibration")
     process = subprocess.Popen(command, shell=True)
     send_signal(args.calibrator_ip, args.port_intercom)
     try:
@@ -97,9 +121,25 @@ def enable_calibration(args):
     time.sleep(SLEEPER)
 
 
-def make_sure_dvs_ready(args):
-    os.system(f"pkill -f cam_lut_undistortion_{args.camera_type}.csv")
-    os.system(f"pkill -f cam_lut_homography_{args.camera_type}.csv")
+
+'''
+This function triggers aestream so the user can see the result of the calibration
+'''
+def stream_warped_data(args):
+
+    os.system(f"rm biases/biases.bias")
+    os.system(f"cp biases/biases_realtime.bias biases/biases.bias")
+
+    os.system(f"pkill -f aestream")
+    time.sleep(SLEEPER)
+    os.system(build_cmd(args, f"luts/cam_lut_homography_{args.camera_type}.csv", "streaming"))
+
+
+def print_data(args):
+    print("Starting Calibration using:")
+    print(f" - {args.camera_type} camera res: {args.res_x}x{args.res_y} px")
+    print(f" - Calibrator IP: {args.calibrator_ip}")
+    print(f"   - Ports: calibration: {args.port_calibration} | streaming: {args.port_streaming}")
 
 
 
@@ -118,17 +158,6 @@ def parse_args():
     
     return parser.parse_args()
 
-def stream_warped_data(args):
-
-    os.system(f"pkill -f aestream")
-    time.sleep(SLEEPER)
-    os.system(build_cmd(args, f"cam_lut_homography_{args.camera_type}", "streaming"))
-
-def print_data(args):
-    print("Starting Calibration using:")
-    print(f" - {args.camera_type} camera res: {args.res_x}x{args.res_y} px")
-    print(f" - Calibrator IP: {args.calibrator_ip}")
-    print(f"   - Ports: calibration: {args.port_calibration} | streaming: {args.port_streaming}")
 
 if __name__ == '__main__':
 
