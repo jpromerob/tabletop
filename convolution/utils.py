@@ -117,8 +117,10 @@ def make_whole_kernel(name, ip_out, k_sz, hs, w_scaler, thickness, fs_ratio):
     if k_sz%2 == 0:
         k_sz += 1
 
+    k_sz = 33
+
     # Radius of pattern edges (target)
-    pos_radi = np.array([20,9])*hs
+    pos_radi = np.array([20,10])*hs
     neg_radi = np.array([2,3,14,15])*hs
 
     # pos_w is given by the w_scaler
@@ -150,6 +152,9 @@ def make_whole_kernel(name, ip_out, k_sz, hs, w_scaler, thickness, fs_ratio):
             make_kernel_circle(i, k_sz, -pos_w, kernel)
             
 
+    # r_kernel = np.zeros((33,33))
+    # r_kernel[2:31,2:31] = kernel
+    # kernel = r_kernel
 
     plt.imshow(kernel, interpolation='nearest')
     colorbar = plt.colorbar()
@@ -166,6 +171,7 @@ def make_whole_kernel(name, ip_out, k_sz, hs, w_scaler, thickness, fs_ratio):
     print(f"\tNegative weights: {round(neg_w,6)}")
     print("\n")
         
+
     return kernel
 
 def div_eight(original_nb):

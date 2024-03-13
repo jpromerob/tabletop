@@ -21,6 +21,39 @@ spin_spif_map = {"1": "172.16.223.2",       # rack 1   | spif-00
                  "121": "172.16.223.122",   # rack 3   | spif-15
                  "129": "172.16.223.130"}   # rack 2   | spif-16
 
+def parse_cfg():
+    # Initialize my_flags array
+    my_flags = [False] * 10
+
+    # Open the settings.cfg file for reading
+    with open('settings.cfg', 'r') as file:
+
+        index = 0
+        # Read each line in the file
+        for line in file:
+            # Split the line into parts based on ':'
+            parts = line.strip().split(':')
+            
+            # Get the index and values after ':'
+            values = parts[1].split(',')
+
+            if index < 3:
+                # Update the my_flags array based on the values
+                for i, value in enumerate(values):
+                    if 'f' in value:
+                        my_flags[index*3] = True
+                    if 'm' in value:
+                        my_flags[index*3 + 1] = True
+                    if 's' in value:
+                        my_flags[index*3 + 2] = True
+            else:
+                for i, value in enumerate(values):
+                    if '1' in value:
+                        my_flags[-1] = True
+            index+=1
+
+    return my_flags
+
 def parse_args():
 
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
@@ -43,6 +76,7 @@ def parse_args():
 if __name__ == '__main__':
 
     args = parse_args()
+    flags = parse_cfg()
     
 
     dim = Dimensions.load_from_file('../common/homdim.pkl')
@@ -57,6 +91,8 @@ if __name__ == '__main__':
     f_kernel = make_whole_kernel("fast", args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 2.00*0.9)
     m_kernel = make_whole_kernel("medium", args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 1.10*0.9)
     s_kernel = make_whole_kernel("slow", args.ip_out, args.ks, dim.hs, args.w_scaler, args.thickness, 0.75*0.9)
+
+    # pdb.set_trace()
 
     print("Configuring Infrastructure ... ")
     SUB_WIDTH = 16
@@ -78,8 +114,8 @@ if __name__ == '__main__':
         if (x*y >= 4*(WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
             break
     
-    NPC_X = x*2
-    NPC_Y = y
+    NPC_X = 8
+    NPC_Y = 4
 
     MY_PC_IP = args.ip_out
     MY_PC_PORT_F_CNN = args.port_f_cnn
@@ -166,86 +202,213 @@ if __name__ == '__main__':
     M_CNN_POP_LABEL = "m_cnn"
     S_CNN_POP_LABEL = "s_cnn"
 
-    # Setting up Fast (high-speed) Convolutional Layer
-    f_cnn_conn = p.ConvolutionConnector(kernel_weights=f_kernel)
-    f_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**f_cell_params),
-                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=F_CNN_POP_LABEL)
-
-    # Setting up Mid (medium-speed) Convolutional Layer
-    m_cnn_conn = p.ConvolutionConnector(kernel_weights=m_kernel)
-    m_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**m_cell_params),
-                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_CNN_POP_LABEL)
-
-    # Setting up Slow (low-speed) Convolutional Layer
-    s_cnn_conn = p.ConvolutionConnector(kernel_weights=s_kernel)
-    s_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**s_cell_params),
-                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_CNN_POP_LABEL)
-
-
-
-    # Projection from SPIF virtual to CNN populations
-    p.Projection(p_spif_virtual_a, f_cnn_pop, f_cnn_conn, p.Convolution())
-    p.Projection(p_spif_virtual_a, m_cnn_pop, m_cnn_conn, p.Convolution())
-    p.Projection(p_spif_virtual_a, s_cnn_pop, s_cnn_conn, p.Convolution())
     
-    muxed = True
-    merged = True
+    mux_syn = p.StaticSynapse(weight=100, delay=0) # weights from SCNNs to copies
 
-    if merged:
+    # Inhibiting mux-ed populations using activity neurons
+    act_scaler=0.5
+    exc_syn = p.StaticSynapse(weight=30*act_scaler, delay=0) # Exciting activity neuron
+    inh_syn = p.StaticSynapse(weight=50*act_scaler, delay=0) 
+
+
+    # Give name to all flags
+    CONNECT_FAST_SCNN = flags[0]
+    CONNECT_MEDIUM_SCNN = flags[1]
+    CONNECT_SLOW_SCNN = flags[2]
+    CONNECT_FAST_COPY = flags[3]
+    CONNECT_MEDIUM_COPY = flags[4]
+    CONNECT_SLOW_COPY = flags[5]
+    CONNECT_FAST_INHIB = flags[6]
+    CONNECT_MEDIUM_INHIB = flags[7]
+    CONNECT_SLOW_INHIB = flags[8]
+    MERGE_THREE_CHANNELS = flags[9]
+
+
+    arbo_one_two = [[],[],[]]
+    arbo_three_two = ["","",""]
+
+    if CONNECT_FAST_SCNN:
+
+        arbo_one_two[0].append("f_cnn")
+        arbo_three_two[0] = "f_cnn"
+
+        print("Creating SCNN for High Speed Motion")
+
+        # Setting up Fast (high-speed) Convolutional Layer
+        f_cnn_conn = p.ConvolutionConnector(kernel_weights=f_kernel)
+        f_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**f_cell_params),
+                                structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=F_CNN_POP_LABEL)
+        
+        # Projection from SPIF virtual to CNN populations
+        p.Projection(p_spif_virtual_a, f_cnn_pop, f_cnn_conn, p.Convolution())
+
+
+    if CONNECT_MEDIUM_SCNN:
+
+        arbo_one_two[1].append("m_cnn")
+        arbo_three_two[1] = "m_cnn"
+
+        print("Creating SCNN for Medium Speed Motion")
+        
+        # Setting up Mid (medium-speed) Convolutional Layer
+        m_cnn_conn = p.ConvolutionConnector(kernel_weights=m_kernel)
+        m_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**m_cell_params),
+                                structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_CNN_POP_LABEL)
+
+        # Projection from SPIF virtual to CNN populations
+        p.Projection(p_spif_virtual_a, m_cnn_pop, m_cnn_conn, p.Convolution())
+
+
+    if CONNECT_SLOW_SCNN:
+
+        arbo_one_two[2].append("s_cnn")
+        arbo_three_two[2] = "s_cnn"
+
+        print("Creating SCNN for Low Speed Motion")
+        # Setting up Slow (low-speed) Convolutional Layer
+        s_cnn_conn = p.ConvolutionConnector(kernel_weights=s_kernel)
+        s_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**s_cell_params),
+                                structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_CNN_POP_LABEL)
+
+        # Projection from SPIF virtual to CNN populations
+        p.Projection(p_spif_virtual_a, s_cnn_pop, s_cnn_conn, p.Convolution())
+
+
+    if CONNECT_FAST_COPY and CONNECT_FAST_SCNN:
+
+        arbo_one_two[0].append(" ++ f_mux")
+        arbo_three_two[0] = "f_mux"
+
+        print("Creating Copy (post-SCNN) for High Speed Motion")
+
+        F_MUX_POP_LABEL = "f_mux"
+
+        # # Setting up Mid (medium-speed) Multiplexing Layer
+        f_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                                structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=F_MUX_POP_LABEL)
+
+        # Projection from SCNN to mux-ed populations
+        p.Projection(f_cnn_pop, f_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
+        
+
+
+    if CONNECT_MEDIUM_COPY and CONNECT_MEDIUM_SCNN:
+
+        arbo_one_two[1].append(" ++ m_mux")
+        arbo_three_two[1] = "m_mux"
+
+        print("Creating Copy (post-SCNN) for Medium Speed Motion")
+
+
+        M_MUX_POP_LABEL = "m_mux"
+
+        # # Setting up Mid (medium-speed) Multiplexing Layer
+        m_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                                structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_MUX_POP_LABEL)
+
+        # Projection from SCNN to mux-ed populations
+        p.Projection(m_cnn_pop, m_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
+        
+
+
+    if CONNECT_SLOW_COPY and CONNECT_SLOW_SCNN:
+
+        arbo_one_two[2].append(" ++ s_mux")
+        arbo_three_two[2] = "s_mux"
+
+        print("Creating Copy (post-SCNN) for Low Speed Motion")
+        S_MUX_POP_LABEL = "s_mux"
+
+        # Setting up Slow (low-speed) Multiplexing Layer
+        s_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
+                                structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_MUX_POP_LABEL)
+
+        p.Projection(s_cnn_pop, s_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
+
+
+    if CONNECT_FAST_INHIB and CONNECT_MEDIUM_COPY and CONNECT_FAST_SCNN:
+
+        arbo_one_two[0].append(" -- f_act_neuron")
+
+        print("Creating Inhibitor from High Speed Motion")
+        f_act_neuron = p.Population(32, celltype(**a_cell_params),
+                                structure=p.Grid2D(8 / 4), label="f_act_neuron")
+
+                                
+        # Fast SCNN inhibits Medium mux-ed population
+        p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)    
+        p.Projection(f_act_neuron, m_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=inh_syn)
+            
+
+
+    if CONNECT_MEDIUM_INHIB and CONNECT_SLOW_COPY and CONNECT_MEDIUM_SCNN:
+
+        arbo_one_two[1].append(" -- m_act_neuron")
+
+        print("Creating Inhibitor from Medium Speed Motion")
+
+        m_act_neuron = p.Population(32, celltype(**a_cell_params),
+                                structure=p.Grid2D(8 / 4), label="m_act_neuron")
+
+
+        # Medium SCNN inhibits Slow mux-ed population
+        p.Projection(m_cnn_pop, m_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)
+        p.Projection(m_act_neuron, s_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=inh_syn)
+            
+
+    if CONNECT_SLOW_INHIB:
+
+        arbo_one_two[2].append(" -- s_act_neuron")
+
+        print("Creating Inhibitor from Low Speed Motion")
+        
+
+    if MERGE_THREE_CHANNELS:
+
+        print("Merging three channels")
+    
+        # Merging Stuff
         MERGED_POP_LABEL = "merged"
         
         merged_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
                                 structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=MERGED_POP_LABEL)
+
+        out_syn = p.StaticSynapse(weight=80, delay=0)
+
         # Fast SCNN and mux-ed populations converged into one full output layer
-        out_syn = p.StaticSynapse(weight=100, delay=0)
-        p.Projection(f_cnn_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+        if CONNECT_FAST_COPY:
+            p.Projection(f_mux_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+        elif CONNECT_FAST_SCNN: 
+            p.Projection(f_cnn_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
         
-        if muxed:
-
-            M_MUX_POP_LABEL = "m_mux"
-            S_MUX_POP_LABEL = "s_mux"
-
-            # # Setting up Mid (medium-speed) Multiplexing Layer
-            m_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
-                                    structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_MUX_POP_LABEL)
-
-            # Setting up Slow (low-speed) Multiplexing Layer
-            s_mux_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**x_cell_params),
-                                    structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_MUX_POP_LABEL)
-
-
-            f_act_neuron = p.Population(16, celltype(**a_cell_params),
-                                    structure=p.Grid2D(4 / 4), label="f_act_neuron")
-
-            m_act_neuron = p.Population(16, celltype(**a_cell_params),
-                                    structure=p.Grid2D(4 / 4), label="m_act_neuron")
-
-
-            # Projection from SCNN to mux-ed populations
-            mux_syn = p.StaticSynapse(weight=100, delay=0)
-            p.Projection(m_cnn_pop, m_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
-            p.Projection(s_cnn_pop, s_mux_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=mux_syn)
-
-
-            # Inhibiting mux-ed populations using activity neurons
-            act_scaler=0.5
-            exc_syn = p.StaticSynapse(weight=30*act_scaler, delay=0) # Exciting activity neuron
-            inh_syn = p.StaticSynapse(weight=50*act_scaler, delay=0) 
-
-            # Fast SCNN inhibits Medium mux-ed population
-            p.Projection(f_cnn_pop, f_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)    
-            p.Projection(f_act_neuron, m_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=inh_syn)
-            
-            # Medium SCNN inhibits Slow mux-ed population
-            p.Projection(m_cnn_pop, m_act_neuron, p.AllToAllConnector(), receptor_type='excitatory', synapse_type=exc_syn)
-            p.Projection(m_act_neuron, s_mux_pop, p.AllToAllConnector(), receptor_type='inhibitory', synapse_type=inh_syn)
-            
-            # Merging muxed pops 
+        if CONNECT_MEDIUM_COPY:
             p.Projection(m_mux_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+        elif CONNECT_MEDIUM_SCNN: 
+            p.Projection(m_cnn_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+        
+        if CONNECT_SLOW_COPY:
             p.Projection(s_mux_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+        elif CONNECT_SLOW_SCNN: 
+            p.Projection(s_cnn_pop, merged_pop, p.OneToOneConnector(), receptor_type='excitatory', synapse_type=out_syn)
+    
 
-            print("\n\n\n MUXING \n\n\n")
+    print("\n")
+    print("NETWORK TOPOLOGY:")
+    print("\n")
+    print("Input")
+    for i in range(len(arbo_one_two)):
+        speed_text_list = arbo_one_two[i]
+        for j in range(len(speed_text_list)):
+            layers_text_list = speed_text_list[j]
+            print("  " + layers_text_list)
 
+    print("\n")
+
+    for j in range(len(arbo_three_two)):
+        print("  " + arbo_three_two[j])
+    print("      Output")
+
+    print("\n\n")
 
 
 
@@ -262,17 +425,19 @@ if __name__ == '__main__':
     #     database_notify_port_num=spif_m_lsc.local_port, chip_coords=CHIP_M), label="m_cnn_output")
     # p.external_devices.activate_live_output_to(m_cnn_pop, spif_m_cnn_output)
    
-    # spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_CNN_POP_LABEL], SPIF_IP_S, SPIF_PORT)
-    # spif_s_lsc.add_receive_callback(S_CNN_POP_LABEL, forward_s_cnn_data)
-    # spif_s_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-    #     database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="s_cnn_output")
-    # p.external_devices.activate_live_output_to(s_cnn_pop, spif_s_cnn_output)
+    spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_CNN_POP_LABEL], SPIF_IP_S, SPIF_PORT)
+    spif_s_lsc.add_receive_callback(S_CNN_POP_LABEL, forward_s_cnn_data)
+    spif_s_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+        database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="s_cnn_output")
+    p.external_devices.activate_live_output_to(s_cnn_pop, spif_s_cnn_output)
 
-    spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([MERGED_POP_LABEL], SPIF_IP_S, SPIF_PORT)
-    spif_s_lsc.add_receive_callback(MERGED_POP_LABEL, forward_s_cnn_data)
-    spif_merged_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-        database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="merged_output")
-    p.external_devices.activate_live_output_to(merged_pop, spif_merged_output)
+
+
+    # spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([MERGED_POP_LABEL], SPIF_IP_S, SPIF_PORT)
+    # spif_s_lsc.add_receive_callback(MERGED_POP_LABEL, forward_s_cnn_data)
+    # spif_merged_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+    #     database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="merged_output")
+    # p.external_devices.activate_live_output_to(merged_pop, spif_merged_output)
 
 
     try:
