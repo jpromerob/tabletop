@@ -14,33 +14,66 @@ SLEEPER = 0.1
 
 
 UDP_IP = '172.16.222.30'  
-PORT_UDP_PUCK = 7373  
-PORT_UDP_TARGET = 6161
+PORT_UDP_PADDLE = 7373  
+PORT_UDP_TARGET = 6262 # 6161 mux_vis | 6262 CUDA_stuff
 
+
+TABLE_LENGHT_X = 27.6
+TABLE_LENGHT_Y = 46
+MOTOR_OFFSET_Y = 22
+
+LIM_LOW = 24
+LIM_HIGH = 36*2-LIM_LOW
 
 '''
 This function converts X-Y from pixel percentage to cm
 inputs: x and y must be floats from 0 to 1
 '''
-def from_px_to_cm(x, y):
+def from_norm_to_cm(x, y):
 
-    new_x = round(((0.5-y/100)*27.6),6)
-    new_y = round(((1-x/100)*46),6)+24
+    new_x = round(((0.5-y/100)*TABLE_LENGHT_X),6)
+    new_y = round(((1-x/100)*TABLE_LENGHT_Y),6)+MOTOR_OFFSET_Y
 
     return new_x, new_y
 
+def from_cm_to_norm(x, y):
+
+    new_x = -100*((y-MOTOR_OFFSET_Y)/(TABLE_LENGHT_Y)-1)
+    new_y = -100*((x)/(TABLE_LENGHT_X)-0.5)
+
+    return new_x, new_y
 
 def algorithm(pose, mode):
 
+
     x, y = pose
     if mode == 'block':
-        y = 26
+        y = LIM_LOW
+    elif mode == 'mirror':
+        # print(f"{x},{y}")
+        if y > LIM_HIGH:
+            # print("Too Far")
+            x = x/2
+            y = LIM_LOW
+        elif y > (LIM_HIGH+LIM_LOW)/2:
+            # print("Active")
+            delta = LIM_HIGH-y
+            y = LIM_LOW + delta
+        else:
+            # The puck is in the paddle's territory
+            # print("Own Territory")
+            x = 0
+            y = LIM_LOW
+
+    elif mode == 'follow':
+        x, y = pose
+
     return x, y
 
 '''
 This process stores tip poses that are received through UDP
 The incoming tuples are floats between 0 and 1 
-A conversion into coordinates in [cm] is done using 'from_px_to_cm'
+A conversion into coordinates in [cm] is done using 'from_norm_to_cm'
 '''
 def xy_from_outer_source(shared_data):
 
@@ -53,7 +86,7 @@ def xy_from_outer_source(shared_data):
     sock.bind((UDP_IP, PORT_UDP_TARGET))
 
     new_x = 0
-    new_y = 26
+    new_y = LIM_LOW
 
     while True:
         
@@ -63,86 +96,104 @@ def xy_from_outer_source(shared_data):
             # Decode the received data and split it into x and y
             x, y = map(float, data.decode().split(","))
             # print(f"Got {x}, {y}")
-            new_x, new_y = from_px_to_cm(x, y)
+            new_x, new_y = from_norm_to_cm(x, y)
             
         except socket.timeout:
             pass
         
-        shared_data['des_puck_pose'] =  algorithm((new_x, new_y), 'block')
+        shared_data['des_paddle_pose'] =  algorithm((new_x, new_y), 'follow')
+        shared_data['cur_puck_pose'] =  (new_x, new_y)
 
 
 '''
 This function plots the current tip's pose
 '''
 def plot_process(shared_data):
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8,12))
     fig.suptitle('Live Puck X-Y position')
 
 
     # initialize_dynamixel lists to store data for plotting
-    x_des_data = []
-    y_des_data = []
-    x_cur_data = []
-    y_cur_data = []
+    x_des_paddle_data = []
+    y_des_paddle_data = []
+    x_cur_paddle_data = []
+    y_cur_paddle_data = []
+    x_cur_puck_data = []
+    y_cur_puck_data = []
     e_data = []
     time_data = []
 
     def update_plot(frame):
-        nonlocal x_des_data, y_des_data, x_cur_data, y_cur_data, e_data, time_data
+        nonlocal x_des_paddle_data, y_des_paddle_data
+        nonlocal x_cur_paddle_data, y_cur_paddle_data
+        nonlocal x_cur_puck_data, y_cur_puck_data
+        nonlocal e_data, time_data
 
-        x_des, y_des = shared_data['des_puck_pose']
-        x_cur, y_cur = shared_data['cur_puck_pose']
-        e  = math.sqrt((x_des-x_cur)**2+(y_des-y_cur)**2)
+        x_des_paddle, y_des_paddle = shared_data['des_paddle_pose']
+        x_cur_paddle, y_cur_paddle = shared_data['cur_paddle_pose']
+        x_cur_puck, y_cur_puck = shared_data['cur_puck_pose']
+        e  = math.sqrt((x_des_paddle-x_cur_paddle)**2+(y_des_paddle-y_cur_paddle)**2)
         current_time = time.time()
 
         # Append new data to the lists
-        x_des_data.append(x_des)
-        y_des_data.append(y_des)
-        x_cur_data.append(x_cur)
-        y_cur_data.append(y_cur)
+        x_des_paddle_data.append(x_des_paddle)
+        y_des_paddle_data.append(y_des_paddle)
+        x_cur_paddle_data.append(x_cur_paddle)
+        y_cur_paddle_data.append(y_cur_paddle)
+        x_cur_puck_data.append(x_cur_puck)
+        y_cur_puck_data.append(y_cur_puck)
         e_data.append(e)
         time_data.append(current_time)
 
         # Keep only the last 20 data points
         nb_pts = 64
-        x_des_data = x_des_data[-nb_pts:]
-        y_des_data = y_des_data[-nb_pts:]
-        x_cur_data = x_cur_data[-nb_pts:]
-        y_cur_data = y_cur_data[-nb_pts:]
+        x_des_paddle_data = x_des_paddle_data[-nb_pts:]
+        y_des_paddle_data = y_des_paddle_data[-nb_pts:]
+        x_cur_paddle_data = x_cur_paddle_data[-nb_pts:]
+        y_cur_paddle_data = y_cur_paddle_data[-nb_pts:]
+        x_cur_puck_data = x_cur_puck_data[-nb_pts:]
+        y_cur_puck_data = y_cur_puck_data[-nb_pts:]
         e_data = e_data[-nb_pts:]
         time_data = time_data[-nb_pts:]
 
 
         # Update the top subplot
         ax1.clear()
-        ax1.plot(np.array(time_data) - time_data[-1], x_des_data, color='green')
-        ax1.plot(np.array(time_data) - time_data[-1], x_cur_data, color='green', linestyle='--')
+        ax1.plot(np.array(time_data) - time_data[-1], x_cur_puck_data, color='green', label='Puck Position')
+        ax1.plot(np.array(time_data) - time_data[-1], x_des_paddle_data, color='blue', label='Desired Paddle Position')
+        ax1.plot(np.array(time_data) - time_data[-1], x_cur_paddle_data, color='blue', label='Current Paddle Position', linestyle='--')
+        ax1.legend(ncol=3, loc='lower center')
         ax1.set_xlabel('Time')
         ax1.set_ylabel('X Position')
-        text_x = f'Desired X: {x_des:.2f} | Current X: {x_cur:.2f}'
+        text_x = f'Desired X: {x_des_paddle:.2f} | Current X: {x_cur_paddle:.2f}'
         ax1.text(0.05, 0.9, text_x, transform=ax1.transAxes, fontsize=10, verticalalignment='top')
         ax1.set_ylim(-24,24)
-
         # Update the bottom subplot
         ax2.clear()
-        ax2.plot(np.array(time_data) - time_data[-1], y_des_data, color='red')
-        ax2.plot(np.array(time_data) - time_data[-1], y_cur_data, color='red', linestyle='--')
-        ax2.axhline(y=44, color='k', linestyle='--')
+        ax2.axhspan(LIM_LOW, LIM_HIGH, color='red', alpha=0.5)
+        ax2.plot(np.array(time_data) - time_data[-1], y_cur_puck_data, color='green', label='Puck Position')
+        ax2.plot(np.array(time_data) - time_data[-1], y_des_paddle_data, color='blue',  label='Desired Paddle Position')
+        ax2.plot(np.array(time_data) - time_data[-1], y_cur_paddle_data, color='blue', label='Current Paddle Position', linestyle='--')
+        ax2.legend(ncol=3, loc='lower center')
+        # ax2.axhline(y=LIM_HIGH, color='red', linestyle='--')
+        # ax2.axhline(y=LIM_LOW, color='red', linestyle='--')
         ax2.set_xlabel('Time')
         ax2.set_ylabel('Y Position')
-        text_y = f'Desired Y: {y_des:.2f} | Current Y: {y_cur:.2f}'
+        text_y = f'Desired Y: {y_des_paddle:.2f} | Current Y: {y_cur_paddle:.2f}'
         ax2.text(0.05, 0.9, text_y, transform=ax2.transAxes, fontsize=10, verticalalignment='top')
-        ax2.set_ylim(20,84)
+        ax2.set_ylim(10,84)
 
 
         # Update the bottom subplot
         ax3.clear()
-        ax3.plot(np.array(time_data) - time_data[-1], e_data, color='black')
+        ax3.plot(np.array(time_data) - time_data[-1], e_data, color='black', label='Puck Position (desired vs current)')
+        ax3.axhline(y=0, color='black', alpha=0.5)
+        ax3.legend(ncol=3, loc='lower center')
         ax3.set_xlabel('Time')
         ax3.set_ylabel('Euclidian Error')
         text_e = f'Error: {e:.2f}'
         ax3.text(0.05, 0.9, text_e, transform=ax3.transAxes, fontsize=10, verticalalignment='top')
-        ax3.set_ylim(0,10)
+        ax3.set_ylim(-2,10)
 
     # Set up the animation
     ani = FuncAnimation(fig, update_plot, interval=100)
@@ -235,12 +286,13 @@ def read_process(shared_data):
             mutex.acquire()
             (cur_x, cur_y) = read_position()
             mutex.release()
-            shared_data['cur_puck_pose'] = (cur_x, cur_y)
-            message = f"{round(cur_x,3)},{round(cur_y,3)}"
-            sock.sendto(message.encode(), (UDP_IP, PORT_UDP_PUCK))
+            shared_data['cur_paddle_pose'] = (cur_x, cur_y)
+            norm_x, norm_y = from_cm_to_norm(cur_x, cur_y)
+            message = f"{round(norm_x,3)},{round(norm_y,3)}"
+            sock.sendto(message.encode(), (UDP_IP, PORT_UDP_PADDLE))
 
             if counter >= 10:
-                # print(f"Sent {round(cur_x,3)},{round(cur_y,3)}")
+                # print(f"Sent {round(norm_x,3)},{round(norm_y,3)}")
                 counter = 0
             else:
                 counter+=1
@@ -261,11 +313,11 @@ def move_process(shared_data):
     approved = True
 
     new_x = 0
-    new_y = 26
+    new_y = LIM_LOW
     old_x = 0
-    old_y = 26
+    old_y = LIM_LOW
     cur_x = 0
-    cur_y = 26
+    cur_y = LIM_LOW
     
     if shared_data['filename']=="trash":
         save_data = False
@@ -277,12 +329,12 @@ def move_process(shared_data):
         writer = csv.writer(csvfile)
         while(approved):
 
-            (cur_x, cur_y) = shared_data['cur_puck_pose']
+            (cur_x, cur_y) = shared_data['cur_paddle_pose']
 
             old_x = new_x
             old_y = new_y
             
-            new_x, new_y = shared_data['des_puck_pose']
+            new_x, new_y = shared_data['des_paddle_pose']
 
             if save_data:
                 writer.writerow([cur_x, cur_y, old_x, old_y])
@@ -337,9 +389,10 @@ def initialize_shared_data():
     shared_data['max_x'] = 10
     shared_data['max_y'] = 42
     shared_data['min_x'] = -10
-    shared_data['min_y'] = 26
-    shared_data['des_puck_pose'] = (0,shared_data['min_y'])
-    shared_data['cur_puck_pose'] = shared_data['des_puck_pose']
+    shared_data['min_y'] = LIM_LOW
+    shared_data['des_paddle_pose'] = (0,shared_data['min_y'])
+    shared_data['cur_puck_pose'] = (0,shared_data['min_y'])
+    shared_data['cur_paddle_pose'] = shared_data['des_paddle_pose']
 
     return shared_data
 
