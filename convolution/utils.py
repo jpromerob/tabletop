@@ -164,7 +164,8 @@ def make_whole_kernel(name, ip_out, k_sz, hs, w_scaler, thickness, fs_ratio):
 
 
     np.save("../common/kernel.npy", kernel)
-    send_kernel(ip_out)
+    if ip_out == "172.16.222.30":
+        send_kernel(ip_out)
 
     print(f"Kernel '{name}':")
     print(f"\tPositive weights: {round(pos_w,6)}")
