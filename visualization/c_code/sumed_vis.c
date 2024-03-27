@@ -108,8 +108,6 @@ float from_s_to_us(float value_in_s){
     value_in_us = 1000000*value_in_s;
     return value_in_us;
 }
-
-
 // Function to calculate Euclidean distance between two points
 double get_distance(double x1, double y1, double x2, double y2) {
     return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
@@ -285,10 +283,10 @@ void* updateCnn(void* arg) {
                 memcpy(&packed_data, &buffer[i], 4);
 
                 // Extract x and y values
-                int x = ((packed_data >> 16) & 0x00003FFF);
-                int y = ((packed_data >> 0) & 0x00003FFF);
+                int x = (K_SZ/2)+ ((packed_data >> 16) & 0x00003FFF);
+                int y = (K_SZ/2)+ ((packed_data >> 0) & 0x00003FFF);
 
-                input_cnn_mat[y+SLICE_HEIGHT*screen_id][x] += 1;
+                input_cnn_mat[y][x] += 1;
             }
             
             // Get the current time
