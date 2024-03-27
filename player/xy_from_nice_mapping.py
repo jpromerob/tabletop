@@ -48,9 +48,7 @@ class ControlNet(torch.nn.Module):
         self.in_mid = []
 
         # Connectivity calculation
-        p_base_line = 0.2  # %
-        p_mirror_line = 0.6  # %
-        p_gap = (p_mirror_line - p_base_line) / 2
+        p_gap = 0.3 / 2
 
         mirror = int(M / 2)
         gap = int(M * p_gap)
@@ -71,8 +69,12 @@ class ControlNet(torch.nn.Module):
                 elif j < middle_right:
                     self.in_mid.append((j, i, M - 1 - (j - mirror + base_left), i))
                     pts += 1
+                # elif j < base_right:
+                #     self.in_mid.append((j, i, j, i))
                 else:
-                    self.in_mid.append((j, i, j, i))
+                    # self.in_mid.append((j, i, j, i))
+                    # self.in_mid.append((j, i, 0, int(N/2)))
+                    self.in_mid.append((j, i, M-1, int(N/2)))
                     pts += 1
 
         print(f"We have {pts} non-zero connections")
