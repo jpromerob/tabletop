@@ -1,5 +1,6 @@
 from five_bar import FiveBar
 import dynamixel_sdk as dx
+import subprocess
 import math
 import time
 
@@ -42,7 +43,18 @@ def initialize_dynamixel(torque_on):
 
     global port
     global handler
-    port = dx.PortHandler("/dev/ttyACM0")
+
+
+    command = "ls /dev/ttyACM*"
+    output = subprocess.check_output(command, shell=True)
+    output = output.decode('utf-8')
+   
+    if len(output) > 20:
+        print(f"Command: {command} returns too many options")
+        quit()
+    else:
+        print(f"\n\nOpening {output}\n")
+    port = dx.PortHandler(output[0:-1])
 
     # initialize_dynamixel PacketHandler Structs
     handler = dx.PacketHandler(2)

@@ -14,8 +14,10 @@ SLEEPER = 0.1
 
 
 UDP_IP = '172.16.222.30'  
-PORT_UDP_PADDLE = 7373  
-PORT_UDP_TARGET = 6262 # 6161 mux_vis | 6262 CUDA_stuff
+PORT_UDP_PADDLE_CONSOLIDATED = 6464
+PORT_UDP_PADDLE_CURRENT = 6363  
+PORT_UDP_PADDLE_DESIRED = 6262 
+PORT_UDP_PUCK_CURRENT = 6161 
 
 
 TABLE_LENGHT_X = 27.6
@@ -43,39 +45,13 @@ def from_cm_to_norm(x, y):
 
     return new_x, new_y
 
-def algorithm(pose, mode):
-
-
-    x, y = pose
-    if mode == 'block':
-        y = LIM_LOW
-    elif mode == 'mirror':
-        # print(f"{x},{y}")
-        if y > LIM_HIGH:
-            # print("Too Far")
-            x = x/2
-            y = LIM_LOW
-        elif y > (LIM_HIGH+LIM_LOW)/2:
-            # print("Active")
-            delta = LIM_HIGH-y
-            y = LIM_LOW + delta
-        else:
-            # The puck is in the paddle's territory
-            # print("Own Territory")
-            x = 0
-            y = LIM_LOW
-
-    elif mode == 'follow':
-        x, y = pose
-
-    return x, y
 
 '''
-This process stores tip poses that are received through UDP
+This process stores desired paddle poses that are received through UDP
 The incoming tuples are floats between 0 and 1 
 A conversion into coordinates in [cm] is done using 'from_norm_to_cm'
 '''
-def xy_from_outer_source(shared_data):
+def receive_paddle_xy(shared_data):
 
 
     # Create a UDP socket
@@ -83,7 +59,8 @@ def xy_from_outer_source(shared_data):
     sock.settimeout(0.020)
 
     # Bind the socket to the receiver's IP and port
-    sock.bind((UDP_IP, PORT_UDP_TARGET))
+    sock.bind((UDP_IP, PORT_UDP_PADDLE_DESIRED))
+
 
     new_x = 0
     new_y = LIM_LOW
@@ -101,9 +78,97 @@ def xy_from_outer_source(shared_data):
         except socket.timeout:
             pass
         
-        shared_data['des_paddle_pose'] =  algorithm((new_x, new_y), 'follow')
+        shared_data['des_paddle_pose'] =  (new_x, new_y)
+
+'''
+This process stores puck poses that are received through UDP
+The incoming tuples are floats between 0 and 1 
+A conversion into coordinates in [cm] is done using 'from_norm_to_cm'
+'''
+def receive_puck_xy(shared_data):
+
+
+    # Create a UDP socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(0.020)
+
+    # Bind the socket to the receiver's IP and port
+    sock.bind((UDP_IP, PORT_UDP_PUCK_CURRENT))
+
+
+    new_x = 0
+    new_y = LIM_LOW
+
+    while True:
+        
+        # Receive data from the sender
+        try:
+            data, sender_address = sock.recvfrom(2048)
+            # Decode the received data and split it into x and y
+            x, y = map(float, data.decode().split(","))
+            # print(f"Got {x}, {y}")
+            new_x, new_y = from_norm_to_cm(x, y)
+            
+        except socket.timeout:
+            pass
+        
         shared_data['cur_puck_pose'] =  (new_x, new_y)
 
+
+'''
+
+'''
+def consolidate_paddle_xy(shared_data):
+
+
+
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    
+
+    while True:
+
+        x_des_paddle, y_des_paddle = shared_data['des_paddle_pose']
+        x_cur_puck, y_cur_puck = shared_data['cur_puck_pose']
+
+
+        if shared_data['mode'] == 'block':
+            x = x_cur_puck
+            y = LIM_LOW
+
+        elif shared_data['mode'] == 'mirror':
+            # print(f"{x},{y}")
+            x = x_cur_puck
+            y = y_cur_puck
+            if y > LIM_HIGH:
+                # print("Too Far")
+                x = x/2
+                y = LIM_LOW
+            elif y > (LIM_HIGH+LIM_LOW)/2:
+                # print("Active")
+                delta = LIM_HIGH-y
+                y = LIM_LOW + delta
+            else:
+                # The puck is in the paddle's territory
+                x = 0
+                y = LIM_LOW
+
+        elif shared_data['mode'] == 'follow':
+            x = x_des_paddle
+            y = y_des_paddle
+
+        else:
+            x = 0
+            y = LIM_LOW
+
+        shared_data['alg_paddle_pose'] = (x, y)
+
+        norm_x, norm_y = from_cm_to_norm(x, y)
+        message = f"{round(norm_x,3)},{round(norm_y,3)}"
+        sock.sendto(message.encode(), (UDP_IP, PORT_UDP_PADDLE_CONSOLIDATED))
+
+
+        time.sleep(0.005)
 
 '''
 This function plots the current tip's pose
@@ -129,7 +194,7 @@ def plot_process(shared_data):
         nonlocal x_cur_puck_data, y_cur_puck_data
         nonlocal e_data, time_data
 
-        x_des_paddle, y_des_paddle = shared_data['des_paddle_pose']
+        x_des_paddle, y_des_paddle = shared_data['alg_paddle_pose']
         x_cur_paddle, y_cur_paddle = shared_data['cur_paddle_pose']
         x_cur_puck, y_cur_puck = shared_data['cur_puck_pose']
         e  = math.sqrt((x_des_paddle-x_cur_paddle)**2+(y_des_paddle-y_cur_paddle)**2)
@@ -289,7 +354,7 @@ def read_process(shared_data):
             shared_data['cur_paddle_pose'] = (cur_x, cur_y)
             norm_x, norm_y = from_cm_to_norm(cur_x, cur_y)
             message = f"{round(norm_x,3)},{round(norm_y,3)}"
-            sock.sendto(message.encode(), (UDP_IP, PORT_UDP_PADDLE))
+            sock.sendto(message.encode(), (UDP_IP, PORT_UDP_PADDLE_CURRENT))
 
             if counter >= 10:
                 # print(f"Sent {round(norm_x,3)},{round(norm_y,3)}")
@@ -334,7 +399,7 @@ def move_process(shared_data):
             old_x = new_x
             old_y = new_y
             
-            new_x, new_y = shared_data['des_paddle_pose']
+            new_x, new_y = shared_data['alg_paddle_pose']
 
             if save_data:
                 writer.writerow([cur_x, cur_y, old_x, old_y])
@@ -370,6 +435,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Dynamixel Controller')
     parser.add_argument('-f', '--filename', type=str, help="Filename", default="trash")
     parser.add_argument('-a','--action', action='store_true', help='Motion activated?')
+    parser.add_argument('-m', '--mode', type=str, help="Mode: follow | block | mirror", default="follow")
 
 
     return parser.parse_args()
@@ -382,17 +448,25 @@ def initialize_shared_data():
     shared_data = multiprocessing.Manager().dict()
     shared_data['filename'] = args.filename
     shared_data['action'] = args.action
+    shared_data['mode'] = args.mode
     shared_data['max_speed'] = 30
     shared_data['min_speed'] = 5
     shared_data['max_delta'] = 5
     shared_data['min_delta'] = 1
+
     shared_data['max_x'] = 10
     shared_data['max_y'] = 42
     shared_data['min_x'] = -10
     shared_data['min_y'] = LIM_LOW
-    shared_data['des_paddle_pose'] = (0,shared_data['min_y'])
-    shared_data['cur_puck_pose'] = (0,shared_data['min_y'])
-    shared_data['cur_paddle_pose'] = shared_data['des_paddle_pose']
+
+    shared_data['des_paddle_pose'] = (0,shared_data['min_y']) # desired paddle position (from outer source)
+    shared_data['cur_puck_pose'] = (0,shared_data['min_y']) # current puck position (from SpiNNaker's SCNN)
+    shared_data['cur_paddle_pose'] = (0,shared_data['min_y']) # current paddle position (from Dynamixle readings)
+
+    shared_data['alg_paddle_pose'] = (0,shared_data['min_y']) # applied paddle position (algorithm[des_paddle_pose])
+
+
+        
 
     return shared_data
 
@@ -419,8 +493,14 @@ if __name__ == '__main__':
     move_proc = multiprocessing.Process(target=move_process, args=(shared_data,))
     move_proc.start()
     
-    recv_process = multiprocessing.Process(target=xy_from_outer_source, args=(shared_data,))
-    recv_process.start()
+    recv_paddle_proc = multiprocessing.Process(target=receive_paddle_xy, args=(shared_data,))
+    recv_paddle_proc.start()
+    
+    recv_puck_proc = multiprocessing.Process(target=receive_puck_xy, args=(shared_data,))
+    recv_puck_proc.start()
+
+    consolidator_proc = multiprocessing.Process(target=consolidate_paddle_xy, args=(shared_data,))
+    consolidator_proc.start()
 
     plot_proc = multiprocessing.Process(target=plot_process, args=(shared_data,))
     plot_proc.start()
@@ -430,7 +510,9 @@ if __name__ == '__main__':
     param_proc.join()
     read_proc.join()    
     move_proc.join()
-    recv_process.join()
+    recv_paddle_proc.join()
+    recv_puck_proc.join()
+    consolidator_proc.join()
     plot_proc.join()
 
 
