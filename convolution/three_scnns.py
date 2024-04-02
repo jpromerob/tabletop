@@ -128,14 +128,13 @@ if __name__ == '__main__':
         forward_data(spikes, MY_PC_IP, MY_PC_PORT_F_CNN)
         forward_data(spikes, "172.16.222.28", 5050)
 
-    def forward_s_cnn_data(label, spikes):
-        forward_data(spikes, MY_PC_IP, MY_PC_PORT_S_CNN)
-        forward_data(spikes, "172.16.222.28", 5050)
-
     def forward_m_cnn_data(label, spikes):
         forward_data(spikes, MY_PC_IP, MY_PC_PORT_M_CNN)
         forward_data(spikes, "172.16.222.28", 5050)
 
+    def forward_s_cnn_data(label, spikes):
+        forward_data(spikes, MY_PC_IP, MY_PC_PORT_S_CNN)
+        forward_data(spikes, "172.16.222.28", 5050)
 
     print("Creating Network ... ")
 
