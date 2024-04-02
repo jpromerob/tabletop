@@ -57,13 +57,13 @@ if __name__ == '__main__':
 
 
             frame[0:res_x,0:res_y,1] =  stream1.read().numpy() 
-            frame[k_offset_x:k_offset_x+k_len,k_offset_y:k_offset_y+k_len,2] = kernel
+            # frame[k_offset_x:k_offset_x+k_len,k_offset_y:k_offset_y+k_len,2] = kernel
 
             image = cv2.resize(frame.transpose(1,0,2), (new_l, new_w), interpolation = cv2.INTER_AREA)
             
             center_x = int(image.shape[1] // 2)
             center_y = int(image.shape[0] // 2)
-            cv2.circle(image, (center_x, center_y), int(dim.pr*args.scale), [0,255,255], 1)
+            # cv2.circle(image, (center_x, center_y), int(dim.pr*args.scale), [0,255,255], 1)
             cv2.imshow(window_name, image)
             
             cv2.waitKey(1)
