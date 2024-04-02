@@ -50,15 +50,15 @@ class ControlNet(torch.nn.Module):
 
         # Define the parameters of the network
         self.middle_layer = torch.nn.Linear(self.input_size, self.middle_size)
-        self.mid_cell = LIFBoxCell(p, dt)
+        self.mid_cell = LIFBoxCell(p, dt) #torch.nn.ReLU()
         self.v_mid = LIFBoxFeedForwardState(v=-65.0*torch.ones(1, self.middle_size).to(device))
 
         self.output_layer_x = torch.nn.Linear(self.middle_size, self.N)  # Nx1 output layer
-        self.out_x_cell = LIFBoxCell(p, dt)
+        self.out_x_cell = LIFBoxCell(p, dt) #torch.nn.ReLU()
         self.v_out_x = LIFBoxFeedForwardState(v=-65.0*torch.ones(1, self.N).to(device))
 
         self.output_layer_y = torch.nn.Linear(self.middle_size, self.M)  # Mx1 output layer
-        self.out_y_cell = LIFBoxCell(p, dt)
+        self.out_y_cell = LIFBoxCell(p, dt) #torch.nn.ReLU()
         self.v_out_y = LIFBoxFeedForwardState(v=-65.0*torch.ones(1, self.M).to(device))
 
         # Initialize weights
@@ -144,6 +144,7 @@ def parse_args():
     parser.add_argument('-s', '--scale', type=int, help="Image scale", default=1)
     parser.add_argument('-l', '--length', type=int, help="Image length", default=255)
     parser.add_argument('-w', '--width', type=int, help="Image width", default=164)
+    parser.add_argument('-v','--visualize', action='store_true', help='Visuale Outputs')
 
     return parser.parse_args()
 
@@ -169,8 +170,9 @@ if __name__ == '__main__':
     res_y = args.length
     res_x = args.width
 
-    window_name = 'Airhockey Display'
-    cv2.namedWindow(window_name)
+    if args.visualize:
+        window_name = 'Airhockey Display'
+        cv2.namedWindow(window_name)
 
     # Stream events from UDP port 3333 (default)
     frame = np.zeros((res_y+1,res_x+1,3))
@@ -230,13 +232,15 @@ if __name__ == '__main__':
                 data = "{},{}".format(x_norm, y_norm).encode()
                 sock.sendto(data, (UDP_IP, PORT_UDP_TARGET))
 
-                circ_center =  (x_coord, y_coord)
+                if args.visualize:
 
-                cv2.circle(frame, circ_center, 3, (0,0,255), thickness=1)
-                image = cv2.resize(frame.transpose(1,0,2), (new_l, new_w), interpolation = cv2.INTER_AREA)
-                
-                cv2.imshow(window_name, image)
-                
-                cv2.waitKey(1)
+                    circ_center =  (x_coord, y_coord)
+
+                    cv2.circle(frame, circ_center, 3, (0,0,255), thickness=1)
+                    image = cv2.resize(frame.transpose(1,0,2), (new_l, new_w), interpolation = cv2.INTER_AREA)
+                    
+                    cv2.imshow(window_name, image)
+                    
+                    cv2.waitKey(1)
                 
     sock.close()
