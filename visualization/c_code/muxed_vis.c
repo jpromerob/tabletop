@@ -30,7 +30,8 @@
 
 #define RECEIVER_IP "172.16.222.30"
 #define PORT_UDP_TIP_TARGET 6161
-#define PORT_UDP_TIP_CURRENT 7373
+#define PORT_UDP_TIP_CURRENT 6363
+#define PORT_UDP_TIP_DESIRED 6464
 #define PADDLE_RADIUS 14
 
 // Colors
@@ -43,6 +44,7 @@ int magenta = 0x00FF66FF;
 int red = 0x00FF0000;
 int yellow = 0x00FFFF00;
 int white = 0x00FFFFFF;
+int orange = 0x00FFA500;
 
 
 int emptyMatrix[WINDOW_HEIGHT][WINDOW_WIDTH];
@@ -75,10 +77,13 @@ int cur_y = SLICE_HEIGHT/2;
 int mux_color;
 
 
-pthread_mutex_t tip_mutex = PTHREAD_MUTEX_INITIALIZER;
-int tip_x = WINDOW_WIDTH/2;
-int tip_y = SLICE_HEIGHT/2;
+pthread_mutex_t cur_tip_mutex = PTHREAD_MUTEX_INITIALIZER;
+int cur_tip_x = WINDOW_WIDTH/2;
+int cur_tip_y = SLICE_HEIGHT/2;
 
+pthread_mutex_t des_tip_mutex = PTHREAD_MUTEX_INITIALIZER;
+int des_tip_x = WINDOW_WIDTH/2;
+int des_tip_y = SLICE_HEIGHT/2;
 
 pthread_mutex_t xyp_mutex = PTHREAD_MUTEX_INITIALIZER;
 int x_px[NB_SLICES];
@@ -253,7 +258,7 @@ void* updateCnn(void* arg) {
     struct timespec start_time, current_time;
     bool local_end = false;
 
-    float tip_x, tip_y;
+    float cur_tip_x, cur_tip_y;
     while (!local_end) {
 
         pthread_mutex_lock(&end_mutex);  
@@ -367,10 +372,10 @@ void* updateShared(void* arg) {
     }
 }
 
-bool can_it_be_the_tip(int x, int y, int tip_x, int tip_y){
+bool can_it_be_the_tip(int x, int y, int cur_tip_x, int cur_tip_y){
     
     bool answer = false;
-    float e_d = sqrt(pow(x - tip_x, 2) + pow(y - tip_y, 2));
+    float e_d = sqrt(pow(x - cur_tip_x, 2) + pow(y - cur_tip_y, 2));
 
     if (e_d < PADDLE_RADIUS*3/2 ){
         answer = true;
@@ -396,8 +401,8 @@ void* findLocation(void* arg) {
     usleep((1000+screen_id+1)*1000);
 
     bool local_end = false;
-    int local_tip_x;
-    int local_tip_y;
+    int local_cur_tip_x;
+    int local_cur_tip_y;
 
     while (!local_end) {
 
@@ -413,7 +418,7 @@ void* findLocation(void* arg) {
         for (int y = SLICE_HEIGHT*(screen_id+0); y < SLICE_HEIGHT*(screen_id+1); y++) {
             for (int x = 0; x < WINDOW_WIDTH; x++) {
                 if(location_cnn_mat[y][x]>0){
-                    if(can_it_be_the_tip(x, y-SLICE_HEIGHT*screen_id, tip_x, tip_y)){
+                    if(can_it_be_the_tip(x, y-SLICE_HEIGHT*screen_id, cur_tip_x, cur_tip_y)){
                         continue;
                     } else {
                         sum_idx_x+=x;
@@ -614,13 +619,21 @@ void* renderMatrix(void* arg) {
         local_mux_color = mux_color;
         pthread_mutex_unlock(&mux_mutex);
 
-        int local_tip_x;
-        int local_tip_y;
-        pthread_mutex_lock(&tip_mutex);  
-        local_tip_x = tip_x;
-        local_tip_y = tip_y;
-        pthread_mutex_unlock(&tip_mutex);
-        // printf("Rendering : %d, %d\n", local_tip_x, local_tip_y);
+        int local_cur_tip_x;
+        int local_cur_tip_y;
+        pthread_mutex_lock(&cur_tip_mutex);  
+        local_cur_tip_x = cur_tip_x;
+        local_cur_tip_y = cur_tip_y;
+        pthread_mutex_unlock(&cur_tip_mutex);
+
+
+        int local_des_tip_x;
+        int local_des_tip_y;
+        pthread_mutex_lock(&des_tip_mutex);  
+        local_des_tip_x = des_tip_x;
+        local_des_tip_y = des_tip_y;
+        pthread_mutex_unlock(&des_tip_mutex);
+        // printf("Rendering : %d, %d\n", local_cur_tip_x, local_cur_tip_y);
 
         // Lock the texture for writing
         void* pixels;
@@ -643,9 +656,13 @@ void* renderMatrix(void* arg) {
                 if (d_puck >K_SZ*4/10-1 && d_puck < K_SZ*4/10+1){
                     color = local_mux_color;
                 }
-                double d_tip = get_distance(x, y-SLICE_HEIGHT*screen_id, local_tip_x, local_tip_y);
-                if (d_tip > PADDLE_RADIUS-1 && d_tip < PADDLE_RADIUS+1){
+                double d_cur_tip = get_distance(x, y-SLICE_HEIGHT*screen_id, local_cur_tip_x, local_cur_tip_y);
+                if (d_cur_tip > PADDLE_RADIUS-1 && d_cur_tip < PADDLE_RADIUS+1){
                     color = blue;
+                }
+                double d_des_tip = get_distance(x, y-SLICE_HEIGHT*screen_id, local_des_tip_x, local_des_tip_y);
+                if (d_des_tip < 4){
+                    color = orange;
                 }
                 if (visual_cnn_mat[y][x] >= 1) {
                     color = red*(visual_cnn_mat[y][x]/COLOR_HIGH);
@@ -672,7 +689,7 @@ void* renderMatrix(void* arg) {
     }
 }
 
-void* updateTipPosition(void* arg) {
+void* updateCurrentTipPosition(void* arg) {
  struct sockaddr_in si_me, si_other;
     int s, i, slen = sizeof(si_other);
     char buf[TIPPOS_BUFF_SIZE];
@@ -709,10 +726,57 @@ void* updateTipPosition(void* arg) {
         float x, y;
         sscanf(buf, "%f,%f", &x, &y);
 
-        pthread_mutex_lock(&tip_mutex);  
-        tip_x = (int)(x*WINDOW_WIDTH/100);
-        tip_y = (int)(y*SLICE_HEIGHT/100);
-        pthread_mutex_unlock(&tip_mutex);
+        pthread_mutex_lock(&cur_tip_mutex);  
+        cur_tip_x = (int)(x*WINDOW_WIDTH/100);
+        cur_tip_y = (int)(y*SLICE_HEIGHT/100);
+        pthread_mutex_unlock(&cur_tip_mutex);
+
+    }
+
+    close(s);
+}
+
+void* updateDesiredTipPosition(void* arg) {
+ struct sockaddr_in si_me, si_other;
+    int s, i, slen = sizeof(si_other);
+    char buf[TIPPOS_BUFF_SIZE];
+
+    if ((s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+        perror("socket");
+        exit(1);
+    }
+
+    memset((char *)&si_me, 0, sizeof(si_me));
+    si_me.sin_family = AF_INET;
+    si_me.sin_port = htons(PORT_UDP_TIP_DESIRED);
+    si_me.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(s, (struct sockaddr *)&si_me, sizeof(si_me)) == -1) {
+        perror("bind");
+        exit(1);
+    }
+
+    bool local_end = false;
+
+    while (!local_end) {
+
+        pthread_mutex_lock(&end_mutex);  
+        local_end = is_the_end;
+        pthread_mutex_unlock(&end_mutex);
+        
+        if (recvfrom(s, buf, TIPPOS_BUFF_SIZE, 0, (struct sockaddr *)&si_other, &slen) == -1) {
+            perror("recvfrom");
+            exit(1);
+        }
+
+        // Decode message into two floats
+        float x, y;
+        sscanf(buf, "%f,%f", &x, &y);
+
+        pthread_mutex_lock(&des_tip_mutex);  
+        des_tip_x = (int)(x*WINDOW_WIDTH/100);
+        des_tip_y = (int)(y*SLICE_HEIGHT/100);
+        pthread_mutex_unlock(&des_tip_mutex);
 
     }
 
@@ -746,7 +810,8 @@ int main(int argc, char *argv[]) {
     pthread_t updateCnnThreads[NB_NETS];
     pthread_t findLocationThreads[NB_NETS];
     pthread_t updateSharedThread;
-    pthread_t updateTipPosThread;
+    pthread_t updateCurrentTipPosThread;
+    pthread_t updateDesiredTipPosThread;
     pthread_t multiplexerThread;
     pthread_t renderThread, timerThread;
 
@@ -759,7 +824,8 @@ int main(int argc, char *argv[]) {
     }
 
     pthread_create(&multiplexerThread, NULL, multiplex, NULL);
-    pthread_create(&updateTipPosThread, NULL, updateTipPosition, NULL);
+    pthread_create(&updateCurrentTipPosThread, NULL, updateCurrentTipPosition, NULL);
+    pthread_create(&updateDesiredTipPosThread, NULL, updateDesiredTipPosition, NULL);
     pthread_create(&updateSharedThread, NULL, updateShared, NULL);
     pthread_create(&renderThread, NULL, renderMatrix, NULL);
     pthread_create(&timerThread, NULL, monitorEvCount, NULL);
@@ -770,7 +836,8 @@ int main(int argc, char *argv[]) {
         pthread_join(updateCnnThreads[i], NULL);
     }
     pthread_join(multiplexerThread, NULL);
-    pthread_join(updateTipPosThread, NULL);
+    pthread_join(updateCurrentTipPosThread, NULL);
+    pthread_join(updateDesiredTipPosThread, NULL);
     pthread_join(updateSharedThread, NULL);
     pthread_join(renderThread, NULL);
     pthread_join(timerThread, NULL);

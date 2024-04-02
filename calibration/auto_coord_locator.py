@@ -165,7 +165,7 @@ def get_new_coord(x, y, h, dim, marker_list, radius):
         if x == ml_x and y == ml_y:
             pass
         else:
-            if math.sqrt((x-ml_x)**2+(y-ml_y)**2) <= 2*radius :
+            if math.sqrt((x-ml_x)**2+(y-ml_y)**2) <= 3*radius :
                 idx_x = -1
                 idx_y = -1     
  
