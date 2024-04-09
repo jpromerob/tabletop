@@ -163,7 +163,8 @@ def get_new_coord(x, y, h, dim, marker_list, radius):
     #Ignore pixels where LEDs are
     for ml_x, ml_y in marker_list:
         if x == ml_x and y == ml_y:
-            pass
+            idx_x = -1
+            idx_y = -1  
         else:
             if math.sqrt((x-ml_x)**2+(y-ml_y)**2) <= 3*radius :
                 idx_x = -1

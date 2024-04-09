@@ -24,7 +24,7 @@ TABLE_LENGHT_X = 27.6
 TABLE_LENGHT_Y = 46
 MOTOR_OFFSET_Y = 22
 
-LIM_LOW = 24
+LIM_LOW = 25
 LIM_HIGH = 36*2-LIM_LOW
 
 '''
@@ -174,7 +174,7 @@ def consolidate_paddle_xy(shared_data):
 This function plots the current tip's pose
 '''
 def plot_process(shared_data):
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8,12))
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10,6.55))
     fig.suptitle('Live Puck X-Y position')
 
 
@@ -224,9 +224,9 @@ def plot_process(shared_data):
 
         # Update the top subplot
         ax1.clear()
-        ax1.plot(np.array(time_data) - time_data[-1], x_cur_puck_data, color='green', label='Puck Position')
-        ax1.plot(np.array(time_data) - time_data[-1], x_des_paddle_data, color='blue', label='Desired Paddle Position')
-        ax1.plot(np.array(time_data) - time_data[-1], x_cur_paddle_data, color='blue', label='Current Paddle Position', linestyle='--')
+        ax1.plot(np.array(time_data) - time_data[-1], x_cur_puck_data, color='red', label='Puck Position')
+        ax1.plot(np.array(time_data) - time_data[-1], x_des_paddle_data, color='orange', label='Desired Paddle Position')
+        ax1.plot(np.array(time_data) - time_data[-1], x_cur_paddle_data, color='blue', label='Current Paddle Position', linestyle=(0, (3, 10, 1, 10, 1, 10)), linewidth=2)
         ax1.legend(ncol=3, loc='lower center')
         ax1.set_xlabel('Time')
         ax1.set_ylabel('X Position')
@@ -235,10 +235,10 @@ def plot_process(shared_data):
         ax1.set_ylim(-24,24)
         # Update the bottom subplot
         ax2.clear()
-        ax2.axhspan(LIM_LOW, LIM_HIGH, color='red', alpha=0.5)
-        ax2.plot(np.array(time_data) - time_data[-1], y_cur_puck_data, color='green', label='Puck Position')
-        ax2.plot(np.array(time_data) - time_data[-1], y_des_paddle_data, color='blue',  label='Desired Paddle Position')
-        ax2.plot(np.array(time_data) - time_data[-1], y_cur_paddle_data, color='blue', label='Current Paddle Position', linestyle='--')
+        ax2.axhspan(LIM_LOW, LIM_HIGH, color='black', alpha=0.2)
+        ax2.plot(np.array(time_data) - time_data[-1], y_cur_puck_data, color='red', label='Puck Position')
+        ax2.plot(np.array(time_data) - time_data[-1], y_des_paddle_data, color='orange',  label='Desired Paddle Position')
+        ax2.plot(np.array(time_data) - time_data[-1], y_cur_paddle_data, color='blue', label='Current Paddle Position', linestyle=(0, (3, 10, 1, 10, 1, 10)), linewidth=2)
         ax2.legend(ncol=3, loc='lower center')
         # ax2.axhline(y=LIM_HIGH, color='red', linestyle='--')
         # ax2.axhline(y=LIM_LOW, color='red', linestyle='--')
@@ -248,17 +248,6 @@ def plot_process(shared_data):
         ax2.text(0.05, 0.9, text_y, transform=ax2.transAxes, fontsize=10, verticalalignment='top')
         ax2.set_ylim(10,84)
 
-
-        # Update the bottom subplot
-        ax3.clear()
-        ax3.plot(np.array(time_data) - time_data[-1], e_data, color='black', label='Puck Position (desired vs current)')
-        ax3.axhline(y=0, color='black', alpha=0.5)
-        ax3.legend(ncol=3, loc='lower center')
-        ax3.set_xlabel('Time')
-        ax3.set_ylabel('Euclidian Error')
-        text_e = f'Error: {e:.2f}'
-        ax3.text(0.05, 0.9, text_e, transform=ax3.transAxes, fontsize=10, verticalalignment='top')
-        ax3.set_ylim(-2,10)
 
     # Set up the animation
     ani = FuncAnimation(fig, update_plot, interval=100)
@@ -367,64 +356,57 @@ def read_process(shared_data):
         time.sleep(0.005)
 
 
+def file_process(shared_data):
+    
+    filename = f"{shared_data['filename']}.csv"
 
+    with open(filename, 'a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        while(True):
 
+            (cur_x, cur_y) = shared_data['cur_puck_pose']            
+            new_x, new_y = shared_data['alg_paddle_pose']
+            writer.writerow([cur_x, cur_y, new_x, new_y])
 
 def move_process(shared_data):
 
     # Wait sufficient time so eveything is properly initialized
     time.sleep(2)
 
-    approved = True
 
     new_x = 0
     new_y = LIM_LOW
-    old_x = 0
-    old_y = LIM_LOW
     cur_x = 0
     cur_y = LIM_LOW
     
-    if shared_data['filename']=="trash":
-        save_data = False
-    else:
-        save_data = True        
-    filename = f"{shared_data['filename']}.csv"
 
-    with open(filename, 'a', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        while(approved):
+    while(True):
 
-            (cur_x, cur_y) = shared_data['cur_paddle_pose']
+        (cur_x, cur_y) = shared_data['cur_paddle_pose']        
+        new_x, new_y = shared_data['alg_paddle_pose']
 
-            old_x = new_x
-            old_y = new_y
+
+
+        # Imaginary margin
+        if new_x < shared_data['min_x'] :
+            new_x = shared_data['min_x']
+        if new_x > shared_data['max_x']:
+            new_x = shared_data['max_x']
+
+        if new_y < shared_data['min_y'] :
+            new_y = shared_data['min_y']
+        if new_y > shared_data['max_y']:
+            new_y = shared_data['max_y']
             
-            new_x, new_y = shared_data['alg_paddle_pose']
-
-            if save_data:
-                writer.writerow([cur_x, cur_y, old_x, old_y])
 
 
-            # Imaginary margin
-            if new_x < shared_data['min_x'] :
-                new_x = shared_data['min_x']
-            if new_x > shared_data['max_x']:
-                new_x = shared_data['max_x']
-
-            if new_y < shared_data['min_y'] :
-                new_y = shared_data['min_y']
-            if new_y > shared_data['max_y']:
-                new_y = shared_data['max_y']
-                
-
-
-            speed = find_speed(new_x, new_y, cur_x, cur_y, shared_data)
-            # print(f"Moving to {new_x},{new_y} @{speed}")
-            if shared_data['action']:
-                mutex.acquire()
-                move_to_from(new_x, new_y, cur_x, cur_y, speed)
-                mutex.release()
-            time.sleep(0.005)
+        speed = find_speed(new_x, new_y, cur_x, cur_y, shared_data)
+        # print(f"Moving to {new_x},{new_y} @{speed}")
+        if shared_data['action']:
+            mutex.acquire()
+            move_to_from(new_x, new_y, cur_x, cur_y, speed)
+            mutex.release()
+        time.sleep(0.005)
 
 
 
@@ -505,6 +487,9 @@ if __name__ == '__main__':
     plot_proc = multiprocessing.Process(target=plot_process, args=(shared_data,))
     plot_proc.start()
     
+    file_proc = multiprocessing.Process(target=file_process, args=(shared_data,))
+    file_proc.start()
+    
 
 
     param_proc.join()
@@ -514,6 +499,7 @@ if __name__ == '__main__':
     recv_puck_proc.join()
     consolidator_proc.join()
     plot_proc.join()
+    file_proc.join()
 
 
 
