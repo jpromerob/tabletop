@@ -18,7 +18,7 @@
 #define MAX_DELTA 20 // 10 pixels
 
 #define WINDOW_WIDTH 256
-#define SLICE_HEIGHT 164
+#define SLICE_HEIGHT 165
 #define WINDOW_HEIGHT SLICE_HEIGHT*NB_SLICES
 
 #define MAT_BUFF_SIZE 1024 * 256
@@ -512,8 +512,10 @@ void* multiplex(void* arg) {
 
 
         memcpy(visual_cnn_mat[SLICE_HEIGHT*(NB_SLICES-1)], shared_cnn_mat[SLICE_HEIGHT*mux_id], sizeof(int) * WINDOW_WIDTH * SLICE_HEIGHT);
-        local_x_px[NB_SLICES-1] = local_x_px[mux_id];
-        local_y_px[NB_SLICES-1] = local_y_px[mux_id]-mux_id*SLICE_HEIGHT+NB_NETS*SLICE_HEIGHT;
+        if(mux_id < NB_NETS){
+            local_x_px[NB_SLICES-1] = local_x_px[mux_id];
+            local_y_px[NB_SLICES-1] = local_y_px[mux_id]-mux_id*SLICE_HEIGHT+NB_NETS*SLICE_HEIGHT;
+        }
                
 
         pthread_mutex_lock(&mux_mutex);     
@@ -524,10 +526,12 @@ void* multiplex(void* arg) {
         } else if (mux_id == 2) {
             mux_color = yellow;
         } else {
-            mux_color = black;
+            mux_color = white;
         }
-        cur_x = local_x_px[NB_SLICES-1];
-        cur_y = local_y_px[NB_SLICES-1];
+        if(mux_id < NB_NETS){
+            cur_x = local_x_px[NB_SLICES-1];
+            cur_y = local_y_px[NB_SLICES-1];
+        }
         pthread_mutex_unlock(&mux_mutex);
 
         fraction_x = (local_x_px[NB_SLICES-1]);

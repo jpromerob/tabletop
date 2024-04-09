@@ -307,7 +307,7 @@ def parse_args():
     parser.add_argument('-r', '--radius', type= int, help="Cluster radius", default=3)
     parser.add_argument('-e', '--events', type= float, help="Number of events", default=20000)
     parser.add_argument('-vs', '--vis-scale', type=int, help="Visualization scale", default=1)
-    parser.add_argument('-hs', '--hom-scale', type=float, help="Homography scale", default=0.64)
+    parser.add_argument('-hs', '--hom-scale', type=float, help="Homography scale", default=0.585)
     parser.add_argument('-ct', '--camera-type', type=str, help="inivation/prophesee", default="prophesee")
 
     return parser.parse_args()
@@ -324,6 +324,9 @@ if __name__ == '__main__':
         args.res_y = 480
 
     dim = get_dimensions(args.res_x, args.res_y, args.hom_scale)
+    print(f"{dim.fl}x{dim.fw}")
+    # quit()
+    # pdb.set_trace()
     
     print(f"Inter-LED distance @ X: {dim.iw}")
     print(f"Inter-LED distance @ Y: {dim.il}")
