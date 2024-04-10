@@ -35,22 +35,21 @@
 #define PADDLE_RADIUS 14
 
 // Colors
-int base = 0xFF000000;
-int black = 0x00000000;
-int green = 0x00006400;
-int blue = 0x000000FF;
-int cyan = 0x0000FFFF;
-int magenta = 0x00FF66FF;
-int red = 0x00FF0000;
-int yellow = 0x00FFFF00;
-int white = 0x00FFFFFF;
-int orange = 0x00FFA500;
+#define BASE_COLOR 0xFF000000
+#define BLACK 0x00000000
+#define GREEN 0x00006400
+#define BLUE 0x000000FF
+#define CYAN 0x0000FFFF
+#define MAGENTA 0x00FF66FF
+#define RED 0x00FF0000
+#define YELLOW 0x00FFFF00
+#define WHITE 0x00FFFFFF
+#define ORANGE 0x00FFA500
 
 
 int emptyMatrix[WINDOW_HEIGHT][WINDOW_WIDTH];
 float acc_time_in_s = 0.001000; /* 1[ms]*/
 float scale = 1.0; // No need for mutex since it's not accessed by parallel processes
-
 
 
 /**********************************************************************************************************
@@ -74,7 +73,8 @@ int location_cnn_mat[WINDOW_HEIGHT][WINDOW_WIDTH]; // matrix used to find XY loc
 pthread_mutex_t mux_mutex = PTHREAD_MUTEX_INITIALIZER;
 int cur_x = WINDOW_WIDTH/2;
 int cur_y = SLICE_HEIGHT/2;
-int mux_color;
+int mux_color = WHITE;
+int mux_id = NB_NETS;
 
 
 pthread_mutex_t cur_tip_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -372,19 +372,6 @@ void* updateShared(void* arg) {
     }
 }
 
-bool can_it_be_the_tip(int x, int y, int cur_tip_x, int cur_tip_y){
-    
-    bool answer = false;
-    float e_d = sqrt(pow(x - cur_tip_x, 2) + pow(y - cur_tip_y, 2));
-
-    if (e_d < PADDLE_RADIUS*3/2 ){
-        answer = true;
-    }
-
-
-    return answer;
-}
-
 /****************************************************************************
 
 This process in in charge of finding the hotspots (of activity) for each of
@@ -417,14 +404,10 @@ void* findLocation(void* arg) {
 
         for (int y = SLICE_HEIGHT*(screen_id+0); y < SLICE_HEIGHT*(screen_id+1); y++) {
             for (int x = 0; x < WINDOW_WIDTH; x++) {
-                if(location_cnn_mat[y][x]>0){
-                    if(can_it_be_the_tip(x, y-SLICE_HEIGHT*screen_id, cur_tip_x, cur_tip_y)){
-                        continue;
-                    } else {
-                        sum_idx_x+=x;
-                        sum_idx_y+=y;
-                        count_ones++;
-                    }
+                if(location_cnn_mat[y][x]>0){                    
+                    sum_idx_x+=x;
+                    sum_idx_y+=y;
+                    count_ones++;
                 }
                 
             }
@@ -477,7 +460,6 @@ void* multiplex(void* arg) {
     int local_x_px[NB_SLICES];
     int local_y_px[NB_SLICES];
     int local_ev_count[NB_SLICES];
-    int mux_id = NB_SLICES-1;
 
     float fraction_x;
     float fraction_y;
@@ -501,7 +483,10 @@ void* multiplex(void* arg) {
 
         bool activity_detected = false;
 
-        mux_id = NB_NETS;
+               
+
+        pthread_mutex_lock(&mux_mutex);    
+        
         for(int screen_id = 0; screen_id < NB_NETS; screen_id++){
             if(local_ev_count[screen_id] > EV_COUNT_THRESHOLD){
                 mux_id = screen_id;
@@ -510,28 +495,26 @@ void* multiplex(void* arg) {
             }
         }
 
-
         memcpy(visual_cnn_mat[SLICE_HEIGHT*(NB_SLICES-1)], shared_cnn_mat[SLICE_HEIGHT*mux_id], sizeof(int) * WINDOW_WIDTH * SLICE_HEIGHT);
+
+        /* Current (x, y) only changes when there is some activity in at elast one of the SCNNs*/
         if(mux_id < NB_NETS){
             local_x_px[NB_SLICES-1] = local_x_px[mux_id];
             local_y_px[NB_SLICES-1] = local_y_px[mux_id]-mux_id*SLICE_HEIGHT+NB_NETS*SLICE_HEIGHT;
         }
-               
 
-        pthread_mutex_lock(&mux_mutex);     
+        /* Update Color is necessary (i.e. if any SCNN reports activity)*/
         if(mux_id == 0){
-            mux_color = cyan;
+            mux_color = CYAN;
         } else if (mux_id == 1) {
-            mux_color = magenta;
+            mux_color = MAGENTA;
         } else if (mux_id == 2) {
-            mux_color = yellow;
-        } else {
-            mux_color = white;
+            mux_color = YELLOW;
         }
-        if(mux_id < NB_NETS){
-            cur_x = local_x_px[NB_SLICES-1];
-            cur_y = local_y_px[NB_SLICES-1];
-        }
+
+        cur_x = local_x_px[NB_SLICES-1];
+        cur_y = local_y_px[NB_SLICES-1];
+        
         pthread_mutex_unlock(&mux_mutex);
 
         fraction_x = (local_x_px[NB_SLICES-1]);
@@ -644,17 +627,17 @@ void* renderMatrix(void* arg) {
         int pitch;
         SDL_LockTexture(matrixTexture, NULL, &pixels, &pitch);
 
-        int color = black;
+        int color = BLACK;
 
         // Update the texture pixel data
         int screen_id = NB_SLICES-1;
         for (int y = SLICE_HEIGHT*(screen_id+0); y < SLICE_HEIGHT*(screen_id+1); y++) {
             for (int x = 0; x < WINDOW_WIDTH; x++) {
                 int index = (y-screen_id*SLICE_HEIGHT) * WINDOW_WIDTH + x;
-                color = black;
+                color = BLACK;
                 if (visual_raw_mat[y][x] >= 1) {
-                    // Set color to green (0xFF00FF00) if the matrix value is 1
-                    color = green*(visual_raw_mat[y][x]/COLOR_HIGH);
+                    // Set color to GREEN (0xFF00FF00) if the matrix value is 1
+                    color = GREEN*(visual_raw_mat[y][x]/COLOR_HIGH);
                 } 
                 double d_puck = get_distance(x, y, local_cur_x, local_cur_y);
                 if (d_puck >K_SZ*4/10-1 && d_puck < K_SZ*4/10+1){
@@ -662,16 +645,16 @@ void* renderMatrix(void* arg) {
                 }
                 double d_cur_tip = get_distance(x, y-SLICE_HEIGHT*screen_id, local_cur_tip_x, local_cur_tip_y);
                 if (d_cur_tip > PADDLE_RADIUS-1 && d_cur_tip < PADDLE_RADIUS+1){
-                    color = blue;
+                    color = BLUE;
                 }
                 double d_des_tip = get_distance(x, y-SLICE_HEIGHT*screen_id, local_des_tip_x, local_des_tip_y);
                 if (d_des_tip < 4){
-                    color = orange;
+                    color = ORANGE;
                 }
                 if (visual_cnn_mat[y][x] >= 1) {
-                    color = red*(visual_cnn_mat[y][x]/COLOR_HIGH);
+                    color = RED*(visual_cnn_mat[y][x]/COLOR_HIGH);
                 } 
-                ((Uint32*)pixels)[index] = color + base;
+                ((Uint32*)pixels)[index] = color + BASE_COLOR;
             }
         }
 
