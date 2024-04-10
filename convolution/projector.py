@@ -24,6 +24,7 @@ spin_spif_map = {"1": "172.16.223.2",       # rack 1   | spif-00
                  "121": "172.16.223.122",   # rack 3   | spif-15
                  "129": "172.16.223.130"}   # rack 2   | spif-16
 
+
 def smallest_power_of_2(x):
     # Calculate the smallest power of 2 greater than x
     power = math.ceil(math.log2(x))
@@ -34,11 +35,9 @@ def parse_args():
 
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
 
-    parser.add_argument('-pf', '--port-out', type= int, help="Port Out (fast)", default=6565)
-    parser.add_argument('-ip', '--ip-pc', type= str, help="IP PC", default="172.16.222.28")
-    parser.add_argument('-ns', '--next-module-ip', type= str, help="IP SPIF", default="172.16.223.10")
-    parser.add_argument('-np', '--next-module_port', type= int, help="IP SPIF", default=3333)
-    parser.add_argument('-b', '--board', type=int, help="Board ID", default=13)
+    parser.add_argument('-cb', '--current-board', type= int, help="Current Computing Board (172.16.223.XX)", default=43)
+    parser.add_argument('-nb', '--next-board', type= int, help="Next Computing Board (172.16.223.XX)", default=-1)
+    parser.add_argument('-dp', '--display-pc', type= int, help="Display PC (172.16.222.XX)", default=30)
     parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=240)
     return parser.parse_args()
 
@@ -46,12 +45,11 @@ if __name__ == '__main__':
 
     args = parse_args()
     
-    print(f"{args.port_out}")
-    print(f"{args.ip_pc}")
 
     print("Setting machines up ... ")
-    CFG_FILE = f"spynnaker_{args.board}.cfg"
-    SPIF_IP = spin_spif_map[f"{args.board}"]
+
+    os.system(f"cp ~/.spynnaker_{args.current_board}.cfg ~/.spynnaker.cfg")
+    SPIF_IP = spin_spif_map[f"{args.current_board}"]
 
 
 
@@ -63,13 +61,18 @@ if __name__ == '__main__':
     WIDTH = smallest_power_of_2(dim.fl) 
     HEIGHT = smallest_power_of_2(dim.fw) 
     
-    NPC_X = 16 #16
-    NPC_Y = 8 #8
+    NPC_X = 16  #16
+    NPC_Y = 8   #8
 
-    MY_PC_IP = args.ip_pc
-    MY_PC_PORT_OUT = args.port_out
-    NEXT_SPIF_PORT = 3333
-    SPIF_PORT = 3332
+    IS_THERE_NEXT_STEP = True
+    if args.next_board < 0:
+        IS_THERE_NEXT_STEP = False
+    else:
+        NEXT_BOARD_SPIF_IP = spin_spif_map[f'{args.next_board}']
+        NEXT_BOARD_SPIF_PORT = 3333
+    DISPLAY_PC_IP = f"172.16.222.{args.display_pc}"
+    DISPLAY_PC_PORT = args.current_board*100+87
+    CURRENT_SPIF_OUT_PORT = 3332
     RUN_TIME = 1000*60*args.runtime
     CHIP = (0,0) 
 
@@ -84,47 +87,28 @@ if __name__ == '__main__':
     def create_list():
 
         conn_list = []
-        weight = 200
+        weight = 100
         delay = 0
-
-
-        # Connectivity calculation
-        p_gap = 0.20
-
-        mirror = int(WIDTH / 2)
-        gap = int(WIDTH * p_gap)
-        middle_left = mirror - gap
-        base_left = mirror - 2 * gap
-        middle_right = mirror + gap
-        base_right = mirror + 2 * gap
-
-        middle_height = int(dim.fw / 2)
 
         for pre_y in range(HEIGHT):
             for pre_x in range(WIDTH):
-
-                #far pitch:
-                if pre_x <= mirror:
-                    post_x = WIDTH - 1 - int(pre_x * base_left / mirror)
-                    post_y = int((pre_y - middle_height) * pre_x / mirror + middle_height)
-                elif pre_x < middle_right:
-                    post_x = WIDTH - 1 - (pre_x - mirror + base_left)
-                    post_y = pre_y
-                else:
-                    post_x = WIDTH-2
-                    post_y = int(middle_height)
-                    
                 pre_idx = pre_y*WIDTH+pre_x
-                post_idx = post_y*WIDTH+post_x
+
+                # Projecting Columns (X)
+                post_idx = pre_x
                 conn_list.append((pre_idx, post_idx, weight, delay))
-                # print(f"({pre_x},{pre_y}) --> {post_idx}")
+
+                # # Projecting Rows (Y)
+                post_idx = pre_y+WIDTH
+                conn_list.append((pre_idx, post_idx, weight, delay))
+
 
         return conn_list
 
     global sock 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    def forward_data(spikes, ip, port):
+    def forward_out_data(label, spikes):
         global sock
         data = b""
         np_spikes = np.array(spikes)
@@ -135,11 +119,10 @@ if __name__ == '__main__':
             polarity = 1
             packed = (NO_TIMESTAMP + (polarity << P_SHIFT) + (y << Y_SHIFT) + (x << X_SHIFT))
             data += pack("<I", packed)
-        sock.sendto(data, (ip, port))
-        sock.sendto(data, ("172.16.222.30", 5050))
+        if IS_THERE_NEXT_STEP:
+            sock.sendto(data, (NEXT_BOARD_SPIF_IP, NEXT_BOARD_SPIF_PORT))
+        sock.sendto(data, (DISPLAY_PC_IP, DISPLAY_PC_PORT))
 
-    def forward_out_data(label, spikes):
-        forward_data(spikes, MY_PC_IP, MY_PC_PORT_OUT)
 
     print("Creating Network ... ")
 
@@ -162,7 +145,7 @@ if __name__ == '__main__':
 
 
     IN_POP_LABEL = "input"
-    OUT_POP_LABEL = "output"
+    MID_POP_LABEL = "output"
 
     celltype = p.IF_curr_exp
     p.set_number_of_neurons_per_core(celltype, (NPC_X, NPC_Y))
@@ -178,8 +161,8 @@ if __name__ == '__main__':
 
 
     
-    middle_pop = p.Population(WIDTH * HEIGHT, celltype(**cell_params),
-                            structure=p.Grid2D(WIDTH / HEIGHT), label=OUT_POP_LABEL)
+    middle_pop = p.Population(WIDTH*NPC_Y, celltype(**cell_params),
+                            structure=p.Grid2D(WIDTH / NPC_Y), label=MID_POP_LABEL)
 
     # pdb.set_trace()
 
@@ -190,8 +173,8 @@ if __name__ == '__main__':
  
 
     # Setting up SPIF Outputs (lsc: live-spikes-connection)
-    spif_lsc = p.external_devices.SPIFLiveSpikesConnection([OUT_POP_LABEL], SPIF_IP, SPIF_PORT)
-    spif_lsc.add_receive_callback(OUT_POP_LABEL, forward_out_data)
+    spif_lsc = p.external_devices.SPIFLiveSpikesConnection([MID_POP_LABEL], SPIF_IP, CURRENT_SPIF_OUT_PORT)
+    spif_lsc.add_receive_callback(MID_POP_LABEL, forward_out_data)
     spif_out_output = p.Population(None, p.external_devices.SPIFOutputDevice(
         database_notify_port_num=spif_lsc.local_port, chip_coords=CHIP), label="spif_output")
     p.external_devices.activate_live_output_to(middle_pop, spif_out_output)
@@ -199,13 +182,17 @@ if __name__ == '__main__':
 
     try:
         time.sleep(1)
+        print("\n\n\n")
         print("List of parameters:")
-        print(f"Board 172.16.223.{args.board} ({CFG_FILE})")
-        print(f"SPIF @ {SPIF_IP}")
-        print(f"Sending data to {MY_PC_IP} ({MY_PC_PORT_OUT})")
+        print(f"Computing Mapping @ Board 172.16.223.{args.current_board}")
+        print(f"\tWith SPIF @ {SPIF_IP}")
+        if IS_THERE_NEXT_STEP:
+            print(f"Sending data for further processing to {NEXT_BOARD_SPIF_IP} ({NEXT_BOARD_SPIF_PORT})")
+        print(f"Sending data for visualization {DISPLAY_PC_IP} ({DISPLAY_PC_PORT})")
         print(f"\tInput: {WIDTH} x {HEIGHT}")
         print(f"\tNPC: {NPC_X} x {NPC_Y}")
         user_input = input_with_timeout("Happy?\n ", 10)
+        print("\n\n\n")
     except KeyboardInterrupt:
         print("\n Simulation cancelled")
         quit()
@@ -213,8 +200,8 @@ if __name__ == '__main__':
 
     # pdb.set_trace()
 
-    print(f"Waiting for rig-power (172.16.223.{args.board-1}) to end ... ")    
-    os.system(f"rig-power 172.16.223.{args.board-1}")
+    print(f"Waiting for rig-power (172.16.223.{args.current_board-1}) to end ... ")    
+    os.system(f"rig-power 172.16.223.{args.current_board-1}")
     
     p.run(RUN_TIME)
 

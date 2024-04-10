@@ -161,7 +161,7 @@ if __name__ == '__main__':
 
     # Define specific parameters for different cell types
     f_cell_params = {'tau_m': 1, **common_neuron_params}
-    m_cell_params = {'tau_m': 11, **common_neuron_params}
+    m_cell_params = {'tau_m': 8, **common_neuron_params}
     s_cell_params = {'tau_m': 64, **common_neuron_params}
     a_cell_params = f_cell_params
     x_cell_params  = f_cell_params
