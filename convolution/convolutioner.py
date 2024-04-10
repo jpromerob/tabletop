@@ -20,7 +20,7 @@ spin_spif_map = {"1": "172.16.223.2",       # rack 1   | spif-00
                  "13": "172.16.223.10",     # 3-b mach | spif-01
                  "121": "172.16.223.122",   # rack 3   | spif-15
                  "129": "172.16.223.130"}   # rack 2   | spif-16
-
+                 
 def parse_args():
 
     parser = argparse.ArgumentParser(description='Automatic Coordinate Location')
@@ -82,7 +82,7 @@ if __name__ == '__main__':
     for i in pow_2:
         y = 2**i
         x = y
-        if (x*y >= 4*(WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
+        if (x*y >= 4*(WIDTH-args.ks)*(HEIGHT-args.ks)/nb_cores):
             break
         x = 2*y
         if (x*y >= 4*(WIDTH-args.ks+1)*(HEIGHT-args.ks+1)/nb_cores):
@@ -90,6 +90,14 @@ if __name__ == '__main__':
     
     NPC_X = x
     NPC_Y = y
+
+    used_nb_neurons = 3*((WIDTH-len(f_kernel)+1)*(HEIGHT-len(f_kernel)+1))
+    used_nb_cores = int(used_nb_neurons/(NPC_X*NPC_Y))
+    percentage_use = round(100*used_nb_cores/nb_cores,2)
+
+    print(f"Using {used_nb_neurons} neurons i.e. {used_nb_cores}/{nb_cores} cores ({percentage_use} % of the system)")
+    time.sleep(2)
+    # pdb.set_trace()
 
     MY_PC_IP = args.ip_pc
     MY_PC_PORT_F_CNN = args.port_f_cnn
