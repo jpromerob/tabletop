@@ -1,14 +1,18 @@
 from dynapi import *
 import time
+import aestream
 import math
 import multiprocessing
 from tkinter import *
 import argparse
 import numpy as np
 import csv
+import sys
 import socket
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+sys.path.append('../common')
+from tools import Dimensions, get_shapes
 
 SLEEPER = 0.1
 
@@ -54,31 +58,67 @@ A conversion into coordinates in [cm] is done using 'from_norm_to_cm'
 def receive_paddle_xy(shared_data):
 
 
-    # Create a UDP socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(0.020)
+    if not shared_data['gpu']:
+        print("Receiving X,Y from SpiNNaker")
 
-    # Bind the socket to the receiver's IP and port
-    sock.bind((UDP_IP, PORT_UDP_PADDLE_DESIRED))
+        in_port = shared_data['board']*100+87
 
+        dim = Dimensions.load_from_file('../common/homdim.pkl')
 
-    new_x = 0
-    new_y = LIM_LOW
-
-    while True:
+        x_coord = int(dim.fl/2)
+        y_coord = int(dim.fw)
         
-        # Receive data from the sender
-        try:
-            data, sender_address = sock.recvfrom(2048)
-            # Decode the received data and split it into x and y
-            x, y = map(float, data.decode().split(","))
-            # print(f"Got {x}, {y}")
-            new_x, new_y = from_norm_to_cm(x, y)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=in_port) as stream1:
+                    
+            while True:
+
+                reading = stream1.read().numpy() 
+                idx_x = np.where(reading[:,0]>0.5)
+                idx_y = np.where(reading[:,1]>0.5)
+
+                try:
+                    if len(idx_x[0])>0 and len(idx_y[0]) > 0:
+                        x_coord = int(np.mean(idx_x))
+                        y_coord = int(np.mean(idx_y))
+                except:
+                    pass       
+                x_norm = x_coord/dim.fl*100
+                y_norm = y_coord/dim.fw*100
+
+                new_x, new_y = from_norm_to_cm(x_norm, y_norm)
+                
+                shared_data['des_paddle_pose'] =  (new_x, new_y)
+    else:
+        print("Receiving X,Y from GPU")
+
+        # Create a UDP socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(0.020)
+
+        # Bind the socket to the receiver's IP and port
+        sock.bind((UDP_IP, PORT_UDP_PADDLE_DESIRED))
+
+
+        new_x = 0
+        new_y = LIM_LOW
+
+        while True:
             
-        except socket.timeout:
-            pass
-        
-        shared_data['des_paddle_pose'] =  (new_x, new_y)
+            # Receive data from the sender
+            try:
+                data, sender_address = sock.recvfrom(2048)
+                # Decode the received data and split it into x and y
+                x, y = map(float, data.decode().split(","))
+                # print(f"Got {x}, {y}")
+                new_x, new_y = from_norm_to_cm(x, y)
+                
+            except socket.timeout:
+                pass
+            
+            shared_data['des_paddle_pose'] =  (new_x, new_y)
+            
 
 '''
 This process stores puck poses that are received through UDP
@@ -417,6 +457,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Dynamixel Controller')
     parser.add_argument('-f', '--filename', type=str, help="Filename", default="trash")
     parser.add_argument('-a','--action', action='store_true', help='Motion activated?')
+    parser.add_argument('-g','--gpu', action='store_true', help='Run on GPU!')
+    parser.add_argument('-b', '--board', type= int, help="Board sending events", default=43)
     parser.add_argument('-m', '--mode', type=str, help="Mode: follow | block | mirror", default="follow")
 
 
@@ -430,6 +472,8 @@ def initialize_shared_data():
     shared_data = multiprocessing.Manager().dict()
     shared_data['filename'] = args.filename
     shared_data['action'] = args.action
+    shared_data['gpu'] = args.gpu
+    shared_data['board'] = args.board
     shared_data['mode'] = args.mode
     shared_data['max_speed'] = 30
     shared_data['min_speed'] = 5
