@@ -96,7 +96,7 @@ if __name__ == '__main__':
     plt.tight_layout()
 
     # Show the plot
-    plt.savefig('Position_And_Speed.png')
+    plt.savefig('images/Position_And_Speed.png')
     # plt.show()
 
     plt.clf()  # Clear the previous plot
@@ -134,6 +134,6 @@ if __name__ == '__main__':
     # Adjust figure size to ensure proper margin
     plt.gcf().set_size_inches(10, 6)  # Adjust width and height as needed
 
-    plt.savefig('Histogram_Speed.png', bbox_inches='tight')  # Save the plot with tight bounding box
+    plt.savefig('images/Histogram_Speed.png', bbox_inches='tight')  # Save the plot with tight bounding box
 
     print(f"{len(speed)} samples in {bins_showed} bins")

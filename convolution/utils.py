@@ -159,7 +159,7 @@ def make_whole_kernel(name, ip_out, k_sz, hs, w_scaler, thickness, fs_ratio):
     plt.imshow(kernel, interpolation='nearest')
     colorbar = plt.colorbar()
     colorbar.set_label('Color Scale')
-    plt.savefig(f"{name}_kernel.png")
+    plt.savefig(f"images/{name}_kernel.png")
     plt.clf()
 
 
