@@ -163,7 +163,7 @@ def make_whole_kernel(name, ip_out, k_sz, hs, w_scaler, thickness, fs_ratio):
     plt.clf()
 
 
-    np.save("../common/kernel.npy", kernel)
+    np.save(f"../common/{name}_kernel.npy", kernel)
     if ip_out == "172.16.222.30":
         send_kernel(ip_out)
 

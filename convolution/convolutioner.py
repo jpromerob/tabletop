@@ -66,6 +66,8 @@ if __name__ == '__main__':
     m_kernel = make_whole_kernel("medium", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 1.10*0.9)
     s_kernel = make_whole_kernel("slow", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 0.75*0.9)
 
+
+
     k_sz = len(f_kernel)
 
     print("Configuring Infrastructure ... ")
