@@ -287,6 +287,8 @@ if __name__ == '__main__':
     # Check if GPU is available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    torch.set_float32_matmul_precision('high')
+
     # Move model to GPU
     model = ControlNet(args.width, args.length).to(device)
 
@@ -295,7 +297,7 @@ if __name__ == '__main__':
 
 
     # Set model to evaluation mode (no gradients)
-    model.eval()
+    model = torch.compile(model.eval())
 
 
     res_y = args.length
@@ -316,7 +318,7 @@ if __name__ == '__main__':
 
 
 
-    with torch.no_grad():
+    with torch.inference_mode():
          
         with aestream.UDPInput((res_y, res_x), device = 'cpu', port=args.port) as stream1:
                     
