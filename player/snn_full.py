@@ -14,15 +14,22 @@ import time
 import pdb
 
 import socket
+from struct import pack
 
 
 import sys
 sys.path.append('../common')
 
+P_SHIFT = 15
+Y_SHIFT = 0
+X_SHIFT = 16
+NO_TIMESTAMP = 0x80000000
+
+
 
 def load_kernel(name):
 
-    scaler = 0.1
+    scaler = 0.2
 
     np_kernel = np.load(f"../common/{name}_kernel.npy")*scaler
     k_sz = len(np_kernel)
@@ -35,7 +42,8 @@ def load_kernel(name):
 
 # Define constants for UDP IP and port
 UDP_IP = '172.16.222.30'
-PORT_UDP_TARGET = 6262  # Choose an appropriate port number
+PORT_UDP_TIP_DESIRED = 6262  # Choose an appropriate port number
+PORT_UDP_PUCK_CURRENT = 3337  # Choose an appropriate port number
 
 def get_model_size(model):
     num_params = sum(p.numel() for p in model.parameters())
@@ -241,7 +249,18 @@ class ControlNet(torch.nn.Module):
 
         return tracking_out, output_x, output_y
 
-
+def send_tracking_data(sock, avg_x, avg_y):
+    data = b""
+    polarity = 1
+    radius = 3
+    offset = int(radius/2)
+    for i in range(radius):
+        for j in range(radius):
+            x = avg_x-offset+i
+            y = avg_y-offset+j
+            packed = (NO_TIMESTAMP + (polarity << P_SHIFT) + (y << Y_SHIFT) + (x << X_SHIFT))
+            data += pack("<I", packed)
+    sock.sendto(data, (UDP_IP, PORT_UDP_PUCK_CURRENT))
 
 
 def parse_args():
@@ -295,6 +314,8 @@ if __name__ == '__main__':
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+
+
     with torch.no_grad():
          
         with aestream.UDPInput((res_y, res_x), device = 'cpu', port=args.port) as stream1:
@@ -315,6 +336,15 @@ if __name__ == '__main__':
                 
                 frame = black.copy()
                 frame[0:out_t_frame.shape[0],0:out_t_frame.shape[1],1] = out_t_frame
+
+
+                nonzero_indices = np.nonzero(frame)
+                if len(nonzero_indices[0]) > 0:
+                    avg_x = int(np.mean(nonzero_indices[0]))
+                    avg_y = int(np.mean(nonzero_indices[1]))
+                    send_tracking_data(sock, avg_x, avg_y)
+
+
                 frame[0:res_y,res_x,0] = out_y
                 frame[res_y,0:res_x,0] = out_x
 
@@ -335,7 +365,7 @@ if __name__ == '__main__':
 
 
                 data = "{},{}".format(x_norm, y_norm).encode()
-                sock.sendto(data, (UDP_IP, PORT_UDP_TARGET))
+                sock.sendto(data, (UDP_IP, PORT_UDP_TIP_DESIRED))
 
                 if args.visualize:
 
