@@ -128,7 +128,7 @@ class ControlNet(torch.nn.Module):
         output_N, self.v_out_x = self.out_x_cell(output_N, self.v_out_x)
 
         output_M = self.output_layer_y(x)
-        # output_M, self.v_out_y = self.out_y_cell(output_M, self.v_out_y)
+        output_M, self.v_out_y = self.out_y_cell(output_M, self.v_out_y)
         x = x.view(-1, self.N, self.M)
         return x, output_N, output_M
 
