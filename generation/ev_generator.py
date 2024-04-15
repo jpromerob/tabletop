@@ -45,7 +45,7 @@ def main():
     parser.add_argument("-ip", type=str, default="172.16.222.30", help="Destination IP address (default: 127.0.0.1)")
     parser.add_argument("-port", type=int, default=3331, help="Destination port number (default: 8080)")
     parser.add_argument("-x", type=int, default=256, help="Size X axis")
-    parser.add_argument("-y", type=int, default=8, help="Size Y axis")
+    parser.add_argument("-y", type=int, default=165, help="Size Y axis")
 
     args = parser.parse_args()
 

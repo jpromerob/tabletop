@@ -158,7 +158,7 @@ def receive_puck_xy(shared_data):
 '''
 
 '''
-def consolidate_paddle_xy(shared_data):
+def forward_paddle_xy(shared_data):
 
 
 
@@ -168,40 +168,7 @@ def consolidate_paddle_xy(shared_data):
 
     while True:
 
-        x_des_paddle, y_des_paddle = shared_data['des_paddle_pose']
-        x_cur_puck, y_cur_puck = shared_data['cur_puck_pose']
-
-
-        if shared_data['mode'] == 'block':
-            x = x_cur_puck
-            y = LIM_LOW
-
-        elif shared_data['mode'] == 'mirror':
-            # print(f"{x},{y}")
-            x = x_cur_puck
-            y = y_cur_puck
-            if y > LIM_HIGH:
-                # print("Too Far")
-                x = x/2
-                y = LIM_LOW
-            elif y > (LIM_HIGH+LIM_LOW)/2:
-                # print("Active")
-                delta = LIM_HIGH-y
-                y = LIM_LOW + delta
-            else:
-                # The puck is in the paddle's territory
-                x = 0
-                y = LIM_LOW
-
-        elif shared_data['mode'] == 'follow':
-            x = x_des_paddle
-            y = y_des_paddle
-
-        else:
-            x = 0
-            y = LIM_LOW
-
-        shared_data['alg_paddle_pose'] = (x, y)
+        x, y = shared_data['des_paddle_pose']
 
         norm_x, norm_y = from_cm_to_norm(x, y)
         message = f"{round(norm_x,3)},{round(norm_y,3)}"
@@ -234,7 +201,7 @@ def plot_process(shared_data):
         nonlocal x_cur_puck_data, y_cur_puck_data
         nonlocal e_data, time_data
 
-        x_des_paddle, y_des_paddle = shared_data['alg_paddle_pose']
+        x_des_paddle, y_des_paddle = shared_data['des_paddle_pose']
         x_cur_paddle, y_cur_paddle = shared_data['cur_paddle_pose']
         x_cur_puck, y_cur_puck = shared_data['cur_puck_pose']
         e  = math.sqrt((x_des_paddle-x_cur_paddle)**2+(y_des_paddle-y_cur_paddle)**2)
@@ -405,7 +372,7 @@ def file_process(shared_data):
         while(True):
 
             (cur_x, cur_y) = shared_data['cur_puck_pose']            
-            new_x, new_y = shared_data['alg_paddle_pose']
+            new_x, new_y = shared_data['des_paddle_pose']
             writer.writerow([cur_x, cur_y, new_x, new_y])
 
 def move_process(shared_data):
@@ -423,7 +390,7 @@ def move_process(shared_data):
     while(True):
 
         (cur_x, cur_y) = shared_data['cur_paddle_pose']        
-        new_x, new_y = shared_data['alg_paddle_pose']
+        new_x, new_y = shared_data['des_paddle_pose']
 
 
 
@@ -459,7 +426,6 @@ def parse_args():
     parser.add_argument('-a','--action', action='store_true', help='Motion activated?')
     parser.add_argument('-g','--gpu', action='store_true', help='Run on GPU!')
     parser.add_argument('-b', '--board', type= int, help="Board sending events", default=43)
-    parser.add_argument('-m', '--mode', type=str, help="Mode: follow | block | mirror", default="follow")
 
 
     return parser.parse_args()
@@ -474,7 +440,6 @@ def initialize_shared_data():
     shared_data['action'] = args.action
     shared_data['gpu'] = args.gpu
     shared_data['board'] = args.board
-    shared_data['mode'] = args.mode
     shared_data['max_speed'] = 30
     shared_data['min_speed'] = 5
     shared_data['max_delta'] = 5
@@ -489,7 +454,6 @@ def initialize_shared_data():
     shared_data['cur_puck_pose'] = (0,shared_data['min_y']) # current puck position (from SpiNNaker's SCNN)
     shared_data['cur_paddle_pose'] = (0,shared_data['min_y']) # current paddle position (from Dynamixle readings)
 
-    shared_data['alg_paddle_pose'] = (0,shared_data['min_y']) # applied paddle position (algorithm[des_paddle_pose])
 
 
         
@@ -525,8 +489,8 @@ if __name__ == '__main__':
     recv_puck_proc = multiprocessing.Process(target=receive_puck_xy, args=(shared_data,))
     recv_puck_proc.start()
 
-    consolidator_proc = multiprocessing.Process(target=consolidate_paddle_xy, args=(shared_data,))
-    consolidator_proc.start()
+    forwarder_proc = multiprocessing.Process(target=forward_paddle_xy, args=(shared_data,))
+    forwarder_proc.start()
 
     plot_proc = multiprocessing.Process(target=plot_process, args=(shared_data,))
     plot_proc.start()
@@ -541,7 +505,7 @@ if __name__ == '__main__':
     move_proc.join()
     recv_paddle_proc.join()
     recv_puck_proc.join()
-    consolidator_proc.join()
+    forwarder_proc.join()
     plot_proc.join()
     file_proc.join()
 
