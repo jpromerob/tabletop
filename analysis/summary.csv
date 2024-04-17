@@ -1,0 +1,5 @@
+Recording,Pipeline,Latency,Error,MinError,MaxSpeed,MeanSpeed,ModeSpeed
+manual_240416_171429,gpu,21,29,7,1.61,0.828,1.127
+manual_240416_171429,gpu,21,29,7,1.945,0.835,1.069
+manual_240416_171429,gpu,20,30,6,1.8,0.872,1.17
+manual_240416_171429,gpu,31,30,3,1.338,0.57,0.535
