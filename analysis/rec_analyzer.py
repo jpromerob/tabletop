@@ -43,10 +43,7 @@ def moving_average(data, window_size):
     weights = np.repeat(1.0, window_size) / window_size
     return np.convolve(data, weights, 'valid')
 
-def analyze_speed(fname, online_coordinates):
-
-    # Smoothing window size
-    window_size = 40
+def analyze_speed(fname, online_coordinates, window_size):
 
 
     # Smoothing the signal using a moving average filter
@@ -134,7 +131,7 @@ def full_loop_process(shared_data):
 
     # Create a UDP socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(0.020)
+    # sock.settimeout(0.001)
 
     # Bind the socket to the receiver's IP and port
     sock.bind((UDP_IP, PORT_UDP_PUCK_CURRENT))
@@ -164,7 +161,7 @@ def full_loop_process(shared_data):
 def get_frames_timestamps_and_coordinates(shared_data):
 
     offrame_nb = 20
-    nb_frames = shared_data['nb_frames']+offrame_nb
+    nb_frames = int(shared_data['nb_frames']*1.2)+offrame_nb
 
     res_x = shared_data['res_x']
     res_y = shared_data['res_y']
@@ -173,57 +170,54 @@ def get_frames_timestamps_and_coordinates(shared_data):
     print(f"Resolution: {res_x}x{res_y}")
 
     # Stream events from UDP port 3333 (default)
-    frame_array = np.zeros((res_x,res_y,nb_frames))
+    frame_array = np.zeros((nb_frames, res_x,res_y))
     time_array = np.zeros((nb_frames))
     online_coordinates = np.zeros((nb_frames,2))
 
 
     stimuli_on = False
     keep_running = True
-    empty_frame_counter = 0
 
     frame_counter = 0
     start_time = time.time()
+    sleeper = 0
 
     with aestream.UDPInput((res_x, res_y), device = 'cpu', port=port) as stream1:
                 
         while keep_running:
 
+            cycle_t_i = time.time()
+
             reading = stream1.read().numpy() 
 
-            ev_count = np.sum(reading)
-
-            if ev_count > 0:
-                empty_frame_counter = 0
-            elif stimuli_on:
-                empty_frame_counter += 1
-                if empty_frame_counter == 100:
-                    stimuli_on == False
-                    print(f"{empty_frame_counter} empty consecutive frames")
-                    break
 
             if not stimuli_on:
-                if ev_count > 0:
-                    print("New stimuli")
+                ev_count = np.sum(reading)
+                if ev_count > 0:                    
+                    t_first_event = time.time()
                     stimuli_on = True
-                    old_frame = frame_array
             else:            
-                frame_array[0:res_x,0:res_y,frame_counter] = reading
+                frame_array[frame_counter, :,:] = reading
                 current_time = time.time()
                 time_array[frame_counter] = (current_time - start_time) * 1000
                 online_coordinates[frame_counter, 0] = shared_data['cur_puck_pose'][0]
                 online_coordinates[frame_counter, 1] = shared_data['cur_puck_pose'][1]
                 frame_counter += 1
-                if frame_counter%100 == 0:
+                if frame_counter%1000 == 0:
                     print(f"Storing Frame | Timestamp | Coordinates #{frame_counter}")
                 if frame_counter == nb_frames:
                     print(f"Reached {frame_counter} frames")
                     keep_running = False
 
-            time.sleep(0.001)
-        
-    # Plotting the image
-    frame_array = frame_array.transpose(1,0,2)
+            sleeper = max(0, 0.001-(time.time()-cycle_t_i))
+            time.sleep(sleeper)
+    
+    print(f"Finish recording after {time.time()-t_first_event} seconds")
+    os.system("pkill -f aestream")
+    time.sleep(2)
+
+
+    frame_array = frame_array.transpose(2,1,0)
 
     # Let's trim the arrays based on number of actual recorded frames
     time_array = time_array[0:frame_counter]
@@ -232,13 +226,13 @@ def get_frames_timestamps_and_coordinates(shared_data):
 
     shared_data['rec_done'] = True
 
+    nb_frame = shared_data['nb_frames'] + offrame_nb
 
-    return frame_array, time_array, online_coordinates
+    return frame_array[0:nb_frame], time_array[0:nb_frame], online_coordinates[0:nb_frame,:]
 
 
-def get_offline_coordinates(frame_array, time_array):
+def get_offline_coordinates(frame_array, time_array, delta_t):
 
-    delta_t = 7 # bin size in [ms]
     threshold = 100
     nb_pts = time_array.shape[0]-delta_t
 
@@ -253,7 +247,6 @@ def get_offline_coordinates(frame_array, time_array):
         sub_frame = frame_array[:,:,i-int(delta_t/2):i+int(delta_t/2)+1]
         in_frame = np.sum(sub_frame, axis=-1)
 
-        # pdb.set_trace()
 
         if PLOT_FRAMES:
             plt.imsave(f'images/frame_test_input.png', in_frame)
@@ -320,8 +313,18 @@ def evaluate_latency(fname, online_x, online_y, offline_x, offline_y, t):
 
     e_x = np.mean(e_x_array)
     e_y = np.mean(e_y_array)
+    std_x = np.std(e_x_array)
+    std_y = np.std(e_y_array)
 
-    error = round(math.sqrt(e_x**2 + e_y**2),3)
+
+    clean_x = e_x_array[(e_x_array<e_x+std_x) & (e_x_array>e_x-std_x)]
+    clean_y = e_y_array[(e_y_array<e_y+std_y) & (e_y_array>e_y-std_y)]
+
+    clean_error_x = np.mean(clean_x)
+    clean_error_y = np.mean(clean_y)
+
+
+    error = round(math.sqrt(clean_error_x**2 + clean_error_y**2),3)
 
 
     if PLOT_CURVES:
@@ -357,13 +360,14 @@ def evaluate_latency(fname, online_x, online_y, offline_x, offline_y, t):
         if t == 0:
             plt.savefig(f'images/{fname}_x_y_on_off_original.png')
         plt.savefig(f'images/{fname}_x_y_on_off_best.png')
+        
 
         plt.close(fig)
     
     return error
 
 
-def find_latency_and_error(online_coordinates, offline_coordinates, fname):
+def find_latency_and_error(online_coordinates, offline_coordinates, nb_shifts, fname):
 
 
     last_element = int(len(online_coordinates)*0.95)
@@ -373,7 +377,7 @@ def find_latency_and_error(online_coordinates, offline_coordinates, fname):
     online_y = online_coordinates[1:last_element, 1]
     offline_y = offline_coordinates[1:last_element, 0]
 
-    nb_shifts = 40
+    
     error = np.zeros(nb_shifts)
     for t in range(nb_shifts-1, -1, -1):     
 
@@ -383,10 +387,8 @@ def find_latency_and_error(online_coordinates, offline_coordinates, fname):
 
     evaluate_latency(fname, online_x, online_y, offline_x, offline_y, latency)
 
-    error_mm = int(error[0]/shared_data['hs'])
-    min_error_mm = int(error[latency]/shared_data['hs'])
 
-    return latency, error_mm, min_error_mm
+    return latency, error[0], error[latency]
 
 
 def write_to_csv(csv_fname, fname, pipeline, latency, error, min_error, max_speed, mean_speed, mode_value):
@@ -407,18 +409,34 @@ def write_to_csv(csv_fname, fname, pipeline, latency, error, min_error, max_spee
 
 def ground_truth_process(shared_data):
 
-    fname = clean_fname(shared_data['fname'])
-    frame_array, time_array, online_coordinates = get_frames_timestamps_and_coordinates(shared_data)
-    max_speed, mean_speed, mode_value = analyze_speed(fname, online_coordinates)
-    offline_coordinates = get_offline_coordinates(frame_array, time_array)
-    latency, error, min_error = find_latency_and_error(online_coordinates, offline_coordinates, fname)
-
     if shared_data['gpu']:
         pipeline = 'gpu'
     else:
         pipeline = 'spinnaker'
+
+    fname = clean_fname(shared_data['fname'])
+    iname = f"{fname}_{pipeline}"
+
+
+    delta_t = 9 # bin size in [ms]
+    window_size = 40
+    nb_shifts = 100
+
+
+    frame_array, time_array, online_coordinates = get_frames_timestamps_and_coordinates(shared_data)
+    offline_coordinates = get_offline_coordinates(frame_array, time_array, delta_t)
+
+    np.save("online.npy", online_coordinates)
+    np.save("offline.npy", offline_coordinates)
+
+
+    max_speed, mean_speed, mode_value = analyze_speed(fname, offline_coordinates, window_size)
+    latency, error, min_error = find_latency_and_error(online_coordinates, offline_coordinates, nb_shifts, iname)
+
     write_to_csv("summary.csv", fname, pipeline, latency, error, min_error, max_speed, mean_speed, mode_value)
 
+    error_mm = int(error/shared_data['hs'])
+    min_error_mm = int(min_error/shared_data['hs'])
     print(f"Latency: {latency} ms | Error[t=0]: {error} [mm]")
 
 
@@ -442,10 +460,13 @@ def aestream_process(shared_data):
     cmd += "undistortion ~/tabletop/calibration/luts/cam_lut_homography_prophesee.csv "
     cmd += f"output udp 172.16.222.30 {raw_port} {ip} {port} "
     cmd += f"input file {shared_data['fname']}"
+    # cmd += f"input prophesee"
 
+    start_time = time.time()
+    print(f"Starting Streaming")
     print(cmd)
     os.system(cmd)
-    print("End of streaming")
+    print(f"End of streaming after {time.time()-start_time} seconds")
 
 def clean_fname(fname):
 
@@ -476,7 +497,6 @@ def initialize_shared_data(args):
 
     shared_data['rec_done'] = False
     shared_data['cur_puck_pose'] = (0,0)
-    # pdb.set_trace()
 
     
 
@@ -500,20 +520,18 @@ if __name__ == '__main__':
 
     shared_data = initialize_shared_data(args)
 
-
-    gt_proc = multiprocessing.Process(target=ground_truth_process, args=(shared_data,))
-    gt_proc.start()
-
+    # ae_proc = multiprocessing.Process(target=aestream_process, args=(shared_data,))
+    # ae_proc.start()
 
     fl_proc = multiprocessing.Process(target=full_loop_process, args=(shared_data,))
     fl_proc.start()
 
+    # gt_proc = multiprocessing.Process(target=ground_truth_process, args=(shared_data,))
+    # gt_proc.start()
 
-    ae_proc = multiprocessing.Process(target=aestream_process, args=(shared_data,))
-    ae_proc.start()
+    ground_truth_process(shared_data)
 
-
-    gt_proc.join()
+    # gt_proc.join()
     fl_proc.join()    
-    ae_proc.join()
+    # ae_proc.join()
 

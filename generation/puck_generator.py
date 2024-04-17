@@ -2,6 +2,7 @@ import argparse
 import sched
 import time
 import pdb
+import math
 import socket
 import multiprocessing
 
@@ -58,8 +59,10 @@ def ev_generation_process(shared_data):
             polarity = 1
             packed = (NO_TIMESTAMP + (polarity << P_SHIFT) + (y << Y_SHIFT) + (x << X_SHIFT))
             data += pack("<I", packed)
-        sock.sendto(data, (ip, port))
-        sock.sendto(data, ("172.16.222.30", 3330))
+        # sock.sendto(data, (ip, port))
+        sock.sendto(data, ("172.16.222.30", 5050))
+        sock.sendto(data, ("172.16.222.28", 5050))
+        # sock.sendto(data, ("172.16.223.122", 3333))
         time.sleep(0.001)
 
 def trajectory_process(shared_data):
@@ -68,14 +71,17 @@ def trajectory_process(shared_data):
     min_y = shared_data['k_sz']/2
     max_x = shared_data['width']-shared_data['k_sz']/2
     max_y = shared_data['height']-shared_data['k_sz']/2
-    cx = int(shared_data['width']/2)
-    cy = int(shared_data['height']/4)
+    cx_0 = int(shared_data['width']/2)
+    cy_0 = int(shared_data['height']/2)
+    cx = cx_0
+    cy = cy_0
 
     if shared_data['mode'] == 'line_x':
         go_right = True
     if shared_data['mode'] == 'line_y':
         go_down = True
 
+    t = 0
     while(True):
 
         delta = speed_dict[shared_data['speed']][1]
@@ -107,11 +113,17 @@ def trajectory_process(shared_data):
                     go_down = True
                     cy += delta
 
+        if shared_data['mode'] == 'circle':
+            cx = cx_0 + cx_0/2*math.sin(t)
+            cy = cy_0 + cy_0/2*math.cos(t)
+
+
         else:
             pass
 
         shared_data['cx'] = int(cx) #int(shared_data['k_sz']/2) # Needs to be higher than k_len/2
         shared_data['cy'] = int(cy) #int(shared_data['k_sz']/2) # Needs to be higher than k_len/2
+        t+=0.005
         time.sleep(0.000100)
 
     
@@ -123,9 +135,9 @@ def parse_args():
     parser.add_argument('-i', '--ip', type=str, help="Destination IP address", default="172.16.222.30")
     parser.add_argument('-p', '--port', type=int, help="Destination port number (default: 8080)", default=3331)
     parser.add_argument('-x', '--width', type=int, help="Size X axis", default=256)
-    parser.add_argument('-y', '--height', type=int, help="Size Y axis", default=8)
+    parser.add_argument('-y', '--height', type=int, help="Size Y axis", default=165)
     parser.add_argument('-s', '--speed', type=str, help="Speed", default="slow")
-    parser.add_argument('-m', '--mode', type=str, help="Speed", default="line_y")
+    parser.add_argument('-m', '--mode', type=str, help="Speed", default="circle")
 
 
 
