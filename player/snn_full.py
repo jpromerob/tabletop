@@ -65,7 +65,7 @@ def setParams(tau_mem):
     )
 
 
-def get_weight_list_from_conv_to_mapper(Xsz, Ysz, weight):
+def get_weight_list_from_conv_to_mapper(mode, Xsz, Ysz, weight):
 
         p_gap=0.3 / 2
         mirror = int(Ysz / 2)
@@ -82,18 +82,21 @@ def get_weight_list_from_conv_to_mapper(Xsz, Ysz, weight):
         for i in range(Xsz):  # height
             for j in range(Ysz):  # width
 
-                # Far pitch
-                if j <= mirror:
-                    weight_list.append((j, i, Ysz - 1 - int(j * base_left / mirror), int((i - Xsz / 2) * j / mirror + Xsz / 2), weight))
-                    pts += 1
-                # Just Mirror
-                elif j < middle_right:
-                    weight_list.append((j, i, Ysz - 1 - (j - mirror + base_left), i, weight))
-                    pts += 1
-                # Panic! Go Back Home
+                if mode == "game":
+                    # Far pitch
+                    if j <= mirror:
+                        weight_list.append((j, i, Ysz - 1 - int(j * base_left / mirror), int((i - Xsz / 2) * j / mirror + Xsz / 2), weight))
+                    # Just Mirror
+                    elif j < middle_right:
+                        weight_list.append((j, i, Ysz - 1 - (j - mirror + base_left), i, weight))
+                    # Panic! Go Back Home
+                    else:
+                        weight_list.append((j, i, Ysz-1, int(Xsz/2), weight))
+                elif mode == "test":
+                    weight_list.append((j, i, j, i, weight))
                 else:
-                    weight_list.append((j, i, Ysz-1, int(Xsz/2), weight))
-                    pts += 1
+                    pass
+                pts += 1
 
         print(f"We have {pts} non-zero connections")
 
@@ -111,10 +114,11 @@ def get_weight_list_from_input_to_conv(Xsz, Ysz, kernel):
 
 
 class ControlNet(torch.nn.Module):
-    def __init__(self, in_x_sz, in_y_sz): #x size, y size (from robot's perspective)
+    def __init__(self, in_x_sz, in_y_sz, mode): #x size, y size (from robot's perspective)
         super(ControlNet, self).__init__()
 
         self.dt = 0.001
+        self.mode = mode
 
         # We have 7 layers:
         #   → Input
@@ -126,6 +130,7 @@ class ControlNet(torch.nn.Module):
         #               ⤷ Y-Projection
 
         # Input Layer
+
         self.input_x_sz = in_x_sz
         self.input_y_sz = in_y_sz
 
@@ -193,7 +198,7 @@ class ControlNet(torch.nn.Module):
         self.s_conv.weight.data = self.s_kernel.to(device)
 
         # Lists to store tuples of connections
-        self.conv_map = get_weight_list_from_conv_to_mapper(self.conv_x_sz, self.conv_y_sz, weight=120)
+        self.conv_map = get_weight_list_from_conv_to_mapper(self.mode, self.conv_x_sz, self.conv_y_sz, weight=120)
         self.map_xy = []
 
 
@@ -272,6 +277,7 @@ def parse_args():
     parser.add_argument('-l', '--length', type=int, help="Image length", default=256)
     parser.add_argument('-w', '--width', type=int, help="Image width", default=165)
     parser.add_argument('-v','--visualize', action='store_true', help='Visuale Outputs')
+    parser.add_argument('-m', '--mode', type=str, help="Mode ('game' vs 'test')", default="game")
 
     return parser.parse_args()
 
@@ -290,7 +296,7 @@ if __name__ == '__main__':
     torch.set_float32_matmul_precision('high')
 
     # Move model to GPU
-    model = ControlNet(args.width, args.length).to(device)
+    model = ControlNet(args.width, args.length, args.mode).to(device)
 
     size_gb = get_model_size(model)
     print(f"Model size: {size_gb:.2f} GB")
