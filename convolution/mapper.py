@@ -39,6 +39,8 @@ def parse_args():
     parser.add_argument('-nb', '--next-board', type= int, help="Next Computing Board (172.16.223.XX)", default=43)
     parser.add_argument('-dp', '--display-pc', type= int, help="Display PC (172.16.222.XX)", default=30)
     parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=240)
+    parser.add_argument('-m', '--mode', type=str, help="Mode ('game' vs 'test')", default="game")
+
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -83,7 +85,7 @@ if __name__ == '__main__':
 
 
 
-    def create_list():
+    def create_list(mode):
 
         conn_list = []
         weight = 200
@@ -105,20 +107,32 @@ if __name__ == '__main__':
         for pre_y in range(HEIGHT):
             for pre_x in range(WIDTH):
 
-                #far pitch:
-                if pre_x <= mirror:
-                    post_x = WIDTH - 1 - int(pre_x * base_left / mirror)
-                    post_y = int((pre_y - middle_height) * pre_x / mirror + middle_height)
-                elif pre_x < middle_right:
-                    post_x = WIDTH - 1 - (pre_x - mirror + base_left)
+                if mode == "game":
+                    #far pitch:
+                    if pre_x <= mirror:
+                        post_x = WIDTH - 1 - int(pre_x * base_left / mirror)
+                        post_y = int((pre_y - middle_height) * pre_x / mirror + middle_height)
+                    elif pre_x < middle_right:
+                        post_x = WIDTH - 1 - (pre_x - mirror + base_left)
+                        post_y = pre_y
+                    else:
+                        post_x = WIDTH-2
+                        post_y = int(middle_height)
+
+                    pre_idx = pre_y*WIDTH+pre_x
+                    post_idx = post_y*WIDTH+post_x
+                    conn_list.append((pre_idx, post_idx, weight, delay))
+
+                elif mode == "test":
+                    post_x = pre_x
                     post_y = pre_y
-                else:
-                    post_x = WIDTH-2
-                    post_y = int(middle_height)
+                    pre_idx = pre_y*WIDTH+pre_x
+                    post_idx = post_y*WIDTH+post_x
+                    conn_list.append((pre_idx, post_idx, weight, delay))
                     
-                pre_idx = pre_y*WIDTH+pre_x
-                post_idx = post_y*WIDTH+post_x
-                conn_list.append((pre_idx, post_idx, weight, delay))
+                else:
+                    pass
+
                 # print(f"({pre_x},{pre_y}) --> {post_idx}")
 
         return conn_list
@@ -186,7 +200,7 @@ if __name__ == '__main__':
     # pdb.set_trace()
 
 
-    conn_list = create_list()
+    conn_list = create_list(args.mode)
     cell_conn = p.FromListConnector(conn_list, safe=True)      
     con_move = p.Projection(p_spif_virtual_a, middle_pop, cell_conn)
  
