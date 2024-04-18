@@ -12,18 +12,13 @@ from struct import pack
 
 import sys
 sys.path.append('../common')
-
+from tools import Dimensions
 
 kernel = np.load("../common/kernel.npy")
 
 
 
 # label : sparsity : delta(movement)
-speed_dict = {
-    'slow': (0.04, 0.005),
-    'medium': (0.24, 0.024),
-    'fast': (0.40, 0.120)
-}
 
 P_SHIFT = 15
 Y_SHIFT = 0
@@ -39,11 +34,25 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 def ev_generation_process(shared_data):
 
     time.sleep(0.100)
+
+
+
+    dim = Dimensions.load_from_file('../common/homdim.pkl')
     indices = shared_data['indices']
     ip = shared_data['ip']
     port = shared_data['port']
 
+    gpu_flag = shared_data['gpu']
 
+    if gpu_flag:
+        print("Sending Data to GPU")
+    else:
+        print("Sending Data to SpiNNaker")
+
+
+    sparsity = shared_data['sparsity']
+    print(f"Sparsity: {sparsity*100}%")
+    
     global sock
     while(True):
         data = b""
@@ -51,7 +60,6 @@ def ev_generation_process(shared_data):
         offset_y = shared_data['cy'] - int(shared_data['k_sz']/2)
         # print(f"Offsets: {offset_x},{offset_y}")
         max_nb_evs = len(indices)
-        sparsity = speed_dict[shared_data['speed']][0]
         act_nb_events = int(sparsity*max_nb_evs)
         for i in np.random.choice(np.arange(max_nb_evs), size=act_nb_events, replace=False):      
             x = indices[i][1] + offset_x 
@@ -60,9 +68,20 @@ def ev_generation_process(shared_data):
             packed = (NO_TIMESTAMP + (polarity << P_SHIFT) + (y << Y_SHIFT) + (x << X_SHIFT))
             data += pack("<I", packed)
         # sock.sendto(data, (ip, port))
-        sock.sendto(data, ("172.16.222.30", 5050))
-        sock.sendto(data, ("172.16.222.28", 5050))
-        # sock.sendto(data, ("172.16.223.122", 3333))
+
+        sock.sendto(data, ("172.16.222.30", 3330)) # for SpiNNaker pipeline
+        if gpu_flag:
+            sock.sendto(data, ("172.16.222.28", 5050)) # for GPU pipeline
+        else:
+            sock.sendto(data, ("172.16.223.122", 3333)) # for SpiNNaker pipeline
+
+
+        x_norm = int(shared_data['cy']/dim.fl*100)
+        y_norm = int(shared_data['cx']/dim.fw*100)
+        data = "{},{}".format(x_norm, y_norm).encode()
+        sock.sendto(data, ("172.16.222.30", 2626))
+        # print(f"Sending {x_norm},{y_norm}")
+
         time.sleep(0.001)
 
 def trajectory_process(shared_data):
@@ -82,9 +101,13 @@ def trajectory_process(shared_data):
         go_down = True
 
     t = 0
+
+    delta_0 = shared_data['delta']*0.003
+    delta = delta_0
+
+    print(f"Delta XY: {delta}")
     while(True):
 
-        delta = speed_dict[shared_data['speed']][1]
         if shared_data['mode'] == 'line_x':
             if go_right:
                 if cx + delta <= max_x:
@@ -114,17 +137,19 @@ def trajectory_process(shared_data):
                     cy += delta
 
         if shared_data['mode'] == 'circle':
-            cx = cx_0 + cx_0/2*math.sin(t)
-            cy = cy_0 + cy_0/2*math.cos(t)
+            cx = cx_0 + cx_0*(math.sin(0.2*t+math.pi/4))*math.cos(t)*3/4
+            cy = cy_0 + cy_0*(math.cos(0.4*t+math.pi/8))*math.sin(t)*3/4
 
 
-        else:
-            pass
 
         shared_data['cx'] = int(cx) #int(shared_data['k_sz']/2) # Needs to be higher than k_len/2
         shared_data['cy'] = int(cy) #int(shared_data['k_sz']/2) # Needs to be higher than k_len/2
-        t+=0.005
-        time.sleep(0.000100)
+        t+=delta
+        if delta < delta_0*0.2:
+            delta = delta_0
+        else:
+            delta = 1*delta
+        time.sleep(0.001)
 
     
 
@@ -134,9 +159,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Script to call forward_data function every 100 microseconds.")
     parser.add_argument('-i', '--ip', type=str, help="Destination IP address", default="172.16.222.30")
     parser.add_argument('-p', '--port', type=int, help="Destination port number (default: 8080)", default=3331)
+    parser.add_argument('-g','--gpu', action='store_true', help='Run on GPU!')
     parser.add_argument('-x', '--width', type=int, help="Size X axis", default=256)
     parser.add_argument('-y', '--height', type=int, help="Size Y axis", default=165)
-    parser.add_argument('-s', '--speed', type=str, help="Speed", default="slow")
+    parser.add_argument('-s', '--sparsity', type=float, help="Sparsity", default=0.2)
+    parser.add_argument('-d', '--delta', type=float, help="Delta XY", default=0.2)
     parser.add_argument('-m', '--mode', type=str, help="Speed", default="circle")
 
 
@@ -146,6 +173,10 @@ def parse_args():
 
 if __name__ == "__main__":
     
+    # print(f"Slow Circular Motion: Sparsity 0.1 | Delta 0.1")
+    # print(f"Medium Circular Motion: Sparsity 0.4 | Delta 0.5")
+    # print(f"Fast Circular Motion: Sparsity 0.7 | Delta 0.9")
+
     args = parse_args()
 
     shared_data = multiprocessing.Manager().dict()
@@ -156,8 +187,10 @@ if __name__ == "__main__":
     shared_data['port'] = args.port
     shared_data['width'] = args.width
     shared_data['height'] = args.height
-    shared_data['speed'] = args.speed
+    shared_data['sparsity'] = args.sparsity
+    shared_data['delta'] = args.delta
     shared_data['mode'] = args.mode
+    shared_data['gpu'] = args.gpu
 
     shared_data['kernel'] = np.load("../common/kernel.npy")
     shared_data['indices'] = np.argwhere(shared_data['kernel']>0)
