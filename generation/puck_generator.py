@@ -50,7 +50,7 @@ def ev_generation_process(shared_data):
         print("Sending Data to SpiNNaker")
 
 
-    sparsity = shared_data['sparsity']
+    sparsity = round(shared_data['sparsity'],3)
     print(f"Sparsity: {sparsity*100}%")
     
     global sock
@@ -102,7 +102,7 @@ def trajectory_process(shared_data):
 
     t = 0
 
-    delta_0 = shared_data['delta']*0.003
+    delta_0 = round(shared_data['delta']*0.003,3)
     delta = delta_0
 
     print(f"Delta XY: {delta}")
@@ -137,8 +137,8 @@ def trajectory_process(shared_data):
                     cy += delta
 
         if shared_data['mode'] == 'circle':
-            cx = cx_0 + cx_0*(math.sin(0.2*t+math.pi/4))*math.cos(t)*3/4
-            cy = cy_0 + cy_0*(math.cos(0.4*t+math.pi/8))*math.sin(t)*3/4
+            cy = cy_0 + cy_0*((math.cos(0.4*t+math.pi/7))*math.sin(t))*3/4
+            cx = cx_0 + cx_0*((math.sin(0.2*t+math.pi/3))*math.cos(t))*3/4
 
 
 
