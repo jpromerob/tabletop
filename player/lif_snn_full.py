@@ -29,7 +29,7 @@ NO_TIMESTAMP = 0x80000000
 
 def load_kernel(name):
 
-    scaler = 0.2
+    scaler = 1
 
     np_kernel = np.load(f"../common/{name}_kernel.npy")*scaler
     k_sz = len(np_kernel)
