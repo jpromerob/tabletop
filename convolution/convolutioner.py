@@ -34,7 +34,7 @@ def parse_args():
 
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
-    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.4) 
+    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.08) 
     parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=3.0) # 
     parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=2)
     parser.add_argument('-r', '--ratio', type=float, help="f/s ratio", default=1.0) # 
