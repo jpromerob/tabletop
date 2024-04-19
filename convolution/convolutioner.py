@@ -151,8 +151,8 @@ if __name__ == '__main__':
 
     # Define common parameters
     common_neuron_params = {
-        'tau_syn_E': 1,
-        'tau_syn_I': 1,
+        'tau_syn_E': 1.0,
+        'tau_syn_I': 1.0,
         'v_rest': -65.0,
         'v_reset': -65.0,
         'v_thresh': -60.0,
