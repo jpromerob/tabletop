@@ -90,6 +90,12 @@ def trajectory_process(shared_data):
     min_y = shared_data['k_sz']/2
     max_x = shared_data['width']-shared_data['k_sz']/2
     max_y = shared_data['height']-shared_data['k_sz']/2
+
+    offx = shared_data['offx']
+    offy = shared_data['offy']
+    amplitude_x = 0.75-abs(offx)
+    amplitude_y = 0.75-abs(offy)
+
     cx_0 = int(shared_data['width']/2)
     cy_0 = int(shared_data['height']/2)
     cx = cx_0
@@ -137,8 +143,8 @@ def trajectory_process(shared_data):
                     cy += delta
 
         if shared_data['mode'] == 'circle':
-            cy = cy_0 + cy_0*((math.cos(0.4*t+math.pi/7))*math.sin(t))*3/4
-            cx = cx_0 + cx_0*((math.sin(0.2*t+math.pi/3))*math.cos(t))*3/4
+            cx = cx_0 + cx_0*(((math.sin(0.7*t+math.pi/3))*math.sin(0.4*t+math.pi/8)*math.sin(t))*amplitude_x+offx)
+            cy = cy_0 + cy_0*(((math.cos(0.3*t+math.pi/7))*math.cos(0.5*t+math.pi/4)*math.cos(t))*amplitude_y+offy)
 
 
 
@@ -165,7 +171,8 @@ def parse_args():
     parser.add_argument('-s', '--sparsity', type=float, help="Sparsity", default=0.2)
     parser.add_argument('-d', '--delta', type=float, help="Delta XY", default=0.2)
     parser.add_argument('-m', '--mode', type=str, help="Speed", default="circle")
-
+    parser.add_argument('-ox', '--offx', type=float, help="Offset X (percentage)", default=0)
+    parser.add_argument('-oy', '--offy', type=float, help="Offset Y (percentage)", default=0)
 
 
     return parser.parse_args()
@@ -191,6 +198,9 @@ if __name__ == "__main__":
     shared_data['delta'] = args.delta
     shared_data['mode'] = args.mode
     shared_data['gpu'] = args.gpu
+
+    shared_data['offx'] = args.offx
+    shared_data['offy'] = args.offy
 
     shared_data['kernel'] = np.load("../common/kernel.npy")
     shared_data['indices'] = np.argwhere(shared_data['kernel']>0)
