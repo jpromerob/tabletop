@@ -82,7 +82,10 @@ def ev_generation_process(shared_data):
         sock.sendto(data, ("172.16.222.30", 2626))
         # print(f"Sending {x_norm},{y_norm}")
 
-        time.sleep(0.001)
+        if shared_data['mode'] == "circle":
+            time.sleep(0.001)
+        else:
+            time.sleep(0.001)
 
 def trajectory_process(shared_data):
 
@@ -108,8 +111,8 @@ def trajectory_process(shared_data):
 
     t = 0
 
-    delta_0 = round(shared_data['delta']*0.003,3)
-    delta = delta_0
+    delta = shared_data['delta']
+    delta_0 = round(delta*0.003,3)
 
     print(f"Delta XY: {delta}")
     while(True):
@@ -150,11 +153,7 @@ def trajectory_process(shared_data):
 
         shared_data['cx'] = int(cx) #int(shared_data['k_sz']/2) # Needs to be higher than k_len/2
         shared_data['cy'] = int(cy) #int(shared_data['k_sz']/2) # Needs to be higher than k_len/2
-        t+=delta
-        if delta < delta_0*0.2:
-            delta = delta_0
-        else:
-            delta = 1*delta
+        t+=delta_0
         time.sleep(0.001)
 
     

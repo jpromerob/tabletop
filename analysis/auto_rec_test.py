@@ -27,13 +27,15 @@ if __name__ == "__main__":
     # Print the list of files
     print("Files with suffix '{}' in directory '{}':".format(file_suffix, directory_path))
     for file in files:
-        print(file)
-        os.system(f"python3 rec_analyzer.py -n 5000  -f ~/tabletop/recordings/{file}")
-        print("\n\n\n")
-        time.sleep(2)
+        # print(file)
+        if file[0:15] == "constant_240423":
+            print(file) 
+            os.system(f"python3 rec_analyzer.py -n 5000  -f ~/tabletop/recordings/{file}")
+            print("\n\n\n")
+            time.sleep(2)
 
-        os.system(f"python3 rec_analyzer.py -n 5000  -f ~/tabletop/recordings/{file} -g")
-        print("\n\n\n")
-        time.sleep(2)
+            os.system(f"python3 rec_analyzer.py -n 5000  -f ~/tabletop/recordings/{file} -g")
+            print("\n\n\n")
+            time.sleep(2)
 
     

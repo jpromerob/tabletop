@@ -346,7 +346,7 @@ def gen_ev_process(shared_data):
     cmd += f"python3 ~/tabletop/generation/puck_generator.py "
     cmd += f"-s {shared_data['sparsity']} -d {shared_data['delta']} "
     cmd += f"-ox {shared_data['offx']} -oy {shared_data['offy']} "
-    cmd += f" -m circle"
+    cmd += f" -m {shared_data['gmode']}"
     if shared_data['gpu']:
         print("Launch event generation for GPU")
         cmd += f" -g"
@@ -439,6 +439,7 @@ def initialize_shared_data(args):
     shared_data['sparsity'] = args.sparsity
     shared_data['gpu'] = args.gpu
     shared_data['nb_frames'] = args.nb_frames
+    shared_data['gmode'] = args.gmode
 
     shared_data['done_storing_data'] = False
     shared_data['intime_pose'] = (0,0)
@@ -453,9 +454,10 @@ def parse_args():
 
     parser.add_argument('-n', '--nb-frames', type= int, help="Max number of frames", default=10000)
     parser.add_argument('-f', '--fname', type= str, help="File Name", default="synthetic")
+    parser.add_argument('-m', '--gmode', type= str, help="Generation Mode", default="circle")
     parser.add_argument('-g','--gpu', action='store_true', help='Run on GPU!')
     parser.add_argument('-b', '--board', type= int, help="Board sending events", default=43)
-    
+
     parser.add_argument('-s', '--sparsity', type= float, help="Sparsity", default=0.6)
     parser.add_argument('-d', '--delta', type= float, help="Delta (puck speed)", default=3.0)
     parser.add_argument('-ox', '--offx', type=float, help="Offset X (percentage)", default=0)
