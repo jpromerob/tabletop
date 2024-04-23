@@ -18,7 +18,7 @@ from tools import Dimensions
 
 
 UDP_IP = '172.16.222.30'  
-PORT_UDP_PUCK_CURRENT = 6161 
+PORT_UDP_DELAYED_DATA = 6262  
 
 PLOT_CURVES = True
 PLOT_FRAMES = False
@@ -125,37 +125,75 @@ def analyze_speed(fname, online_coordinates, window_size):
 
 
 
-def full_loop_process(shared_data):
-
+def delayed_process(shared_data):
+    
     dim = Dimensions.load_from_file('../common/homdim.pkl')
 
-    # Create a UDP socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # sock.settimeout(0.001)
+    x_coord = 0
+    y_coord = 0
 
-    # Bind the socket to the receiver's IP and port
-    sock.bind((UDP_IP, PORT_UDP_PUCK_CURRENT))
+    if not shared_data['gpu']:
+        print("Receiving X,Y from SpiNNaker")
 
+        in_port = shared_data['board']*100+87
+       
 
-    while True:
         
-        # Receive data from the sender
-        try:
-            data, sender_address = sock.recvfrom(2048)
-            # Decode the received data and split it into x and y
-            x_norm, y_norm = map(float, data.decode().split(","))
-            x_coord = int(x_norm*dim.fl/100)
-            y_coord = int(y_norm*dim.fw/100)
-            shared_data['cur_puck_pose'] = (x_coord, y_coord)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+        with aestream.UDPInput((dim.fl, dim.fw), device = 'cpu', port=in_port) as stream1:
+                    
+            while True:
+
+                reading = stream1.read().numpy() 
+                idx_x = np.where(reading[:,0]>0.5)
+                idx_y = np.where(reading[:,1]>0.5)
+
+                try:
+                    if len(idx_x[0])>0 and len(idx_y[0]) > 0:
+                        x_coord = int(np.mean(idx_x))
+                        y_coord = int(np.mean(idx_y))
+                except:
+                    pass       
+                                
+                shared_data['delayed_pose'] =  (x_coord, y_coord)
+
+                if shared_data['done_storing_data']:
+                    break
+    else:
+        print("Receiving X,Y from GPU")
+
+        # Create a UDP socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(0.020)
+
+        # Bind the socket to the receiver's IP and port
+        sock.bind((UDP_IP, PORT_UDP_DELAYED_DATA))
+
+
+
+        while True:
             
-        except socket.timeout:
-            pass
-        
-        if shared_data['rec_done']:
-            break
+            # Receive data from the sender
+            try:
+                data, sender_address = sock.recvfrom(2048)
+
+                # Decode the received data and split it into x and y
+                x_norm, y_norm = map(float, data.decode().split(","))
+                x_coord = int(x_norm*dim.fl/100)
+                y_coord = int(y_norm*dim.fw/100)
+
+                # print(f"In Time: Got {x_coord},{y_coord}")
+                shared_data['delayed_pose'] = (x_coord, y_coord)
+                
+            except socket.timeout:
+                pass
+            
+            
+            if shared_data['done_storing_data']:
+                break
     
-    print("Stopped receiving coordinates from GPU/SpiNNaker")
+    print("Stopped receiving coordinates from GPU/SpiNNaker")    
 
     
 def get_frames_timestamps_and_coordinates(shared_data):
@@ -200,8 +238,8 @@ def get_frames_timestamps_and_coordinates(shared_data):
                 frame_array[frame_counter, :,:] = reading
                 current_time = time.time()
                 time_array[frame_counter] = (current_time - start_time) * 1000
-                online_coordinates[frame_counter, 0] = shared_data['cur_puck_pose'][0]
-                online_coordinates[frame_counter, 1] = shared_data['cur_puck_pose'][1]
+                online_coordinates[frame_counter, 0] = shared_data['delayed_pose'][0]
+                online_coordinates[frame_counter, 1] = shared_data['delayed_pose'][1]
                 frame_counter += 1
                 if frame_counter%1000 == 0:
                     print(f"Storing Frame | Timestamp | Coordinates #{frame_counter}")
@@ -224,7 +262,7 @@ def get_frames_timestamps_and_coordinates(shared_data):
     online_coordinates = online_coordinates[0:frame_counter]
     frame_array = frame_array[:,:,0:frame_counter]
 
-    shared_data['rec_done'] = True
+    shared_data['done_storing_data'] = True
 
     nb_frame = shared_data['nb_frames'] + offrame_nb
 
@@ -233,7 +271,8 @@ def get_frames_timestamps_and_coordinates(shared_data):
 
 def get_offline_coordinates(frame_array, time_array, delta_t):
 
-    threshold = 100
+
+    threshold = 10
     nb_pts = time_array.shape[0]-delta_t
 
     model = CustomCNN()
@@ -285,11 +324,12 @@ def get_offline_coordinates(frame_array, time_array, delta_t):
         
     # Remove datapoints for which X and Y are zero 
     idx_counter = 0
-    while(True):
-        if offline_coordinates[idx_counter,0] != 0 and offline_coordinates[idx_counter,1] != 0:
-            break
-        else:
-            idx_counter += 1
+    # print(idx_counter)
+    # while(True):
+    #     if offline_coordinates[idx_counter,0] != 0 and offline_coordinates[idx_counter,1] != 0:
+    #         break
+    #     else:
+    #         idx_counter += 1
     
 
     return offline_coordinates[idx_counter:,:]
@@ -369,6 +409,7 @@ def evaluate_latency(fname, online_x, online_y, offline_x, offline_y, t):
 
 def find_latency_and_error(online_coordinates, offline_coordinates, nb_shifts, fname):
 
+    # pdb.set_trace()
 
     last_element = int(len(online_coordinates)*0.95)
 
@@ -424,7 +465,9 @@ def ground_truth_process(shared_data):
 
 
     frame_array, time_array, online_coordinates = get_frames_timestamps_and_coordinates(shared_data)
+
     offline_coordinates = get_offline_coordinates(frame_array, time_array, delta_t)
+
 
     np.save("online.npy", online_coordinates)
     np.save("offline.npy", offline_coordinates)
@@ -433,7 +476,7 @@ def ground_truth_process(shared_data):
     max_speed, mean_speed, mode_value = analyze_speed(fname, offline_coordinates, window_size)
     latency, error, min_error = find_latency_and_error(online_coordinates, offline_coordinates, nb_shifts, iname)
 
-    write_to_csv("summary.csv", fname, pipeline, latency, error, min_error, max_speed, mean_speed, mode_value)
+    write_to_csv("rec_summary.csv", fname, pipeline, latency, error, min_error, max_speed, mean_speed, mode_value)
 
     error_mm = int(error/shared_data['hs'])
     min_error_mm = int(min_error/shared_data['hs'])
@@ -494,9 +537,10 @@ def initialize_shared_data(args):
     shared_data['gpu'] = args.gpu
     shared_data['port'] = args.port
     shared_data['nb_frames'] = args.nb_frames
+    shared_data['board'] = args.board
 
-    shared_data['rec_done'] = False
-    shared_data['cur_puck_pose'] = (0,0)
+    shared_data['done_storing_data'] = False
+    shared_data['delayed_pose'] = (0,0)
 
     
 
@@ -508,8 +552,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Display From AEstream')
 
     parser.add_argument('-n', '--nb-frames', type= int, help="Max number of frames", default=10000)
-    parser.add_argument('-f', '--fname', type= str, help="File Name", default="")
+    parser.add_argument('-f', '--fname', type= str, help="File Name", default="synthetic")
     parser.add_argument('-g','--gpu', action='store_true', help='Run on GPU!')
+    parser.add_argument('-b', '--board', type= int, help="Board sending events", default=43)
     parser.add_argument('-p', '--port', type= int, help="Port for events coming from GPU|SpiNNaker", default=5050)
 
     return parser.parse_args()
@@ -520,10 +565,10 @@ if __name__ == '__main__':
 
     shared_data = initialize_shared_data(args)
 
-    # ae_proc = multiprocessing.Process(target=aestream_process, args=(shared_data,))
-    # ae_proc.start()
+    ae_proc = multiprocessing.Process(target=aestream_process, args=(shared_data,))
+    ae_proc.start()
 
-    fl_proc = multiprocessing.Process(target=full_loop_process, args=(shared_data,))
+    fl_proc = multiprocessing.Process(target=delayed_process, args=(shared_data,))
     fl_proc.start()
 
     # gt_proc = multiprocessing.Process(target=ground_truth_process, args=(shared_data,))
@@ -533,5 +578,5 @@ if __name__ == '__main__':
 
     # gt_proc.join()
     fl_proc.join()    
-    # ae_proc.join()
+    ae_proc.join()
 
