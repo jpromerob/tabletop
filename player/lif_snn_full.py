@@ -166,7 +166,7 @@ class ControlNet(torch.nn.Module):
         self.v_f_conv = None
 
         self.m_conv = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=self.m_kernel.shape[-1])
-        self.m_conv_cell = LIFCell(p=setParams(8), dt=self.dt)
+        self.m_conv_cell = LIFCell(p=setParams(12), dt=self.dt)
         self.v_m_conv = None
 
         self.s_conv = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=self.s_kernel.shape[-1])
