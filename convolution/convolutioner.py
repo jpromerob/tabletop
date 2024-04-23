@@ -34,8 +34,7 @@ def parse_args():
 
     parser.add_argument('-ks', '--ks', type=int, help="Kernel Size", default=45)
     parser.add_argument('-b', '--board', type=int, help="Board ID", default=1)
-    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.08) 
-    parser.add_argument('-tm', '--tau-m', type=float, help="Tau m", default=3.0) # 
+    parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.04) 
     parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=2)
     parser.add_argument('-r', '--ratio', type=float, help="f/s ratio", default=1.0) # 
     parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=240)
@@ -62,9 +61,9 @@ if __name__ == '__main__':
 
 
     print("Generating Kernels ... \n")
-    f_kernel = make_whole_kernel("fast", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 2.00*0.9)
-    m_kernel = make_whole_kernel("medium", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 1.10*0.9)
-    s_kernel = make_whole_kernel("slow", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 0.75*0.9)
+    f_kernel = make_whole_kernel("fast", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 1.8)
+    m_kernel = make_whole_kernel("medium", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 0.9)
+    s_kernel = make_whole_kernel("slow", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 0.5)
 
 
 
@@ -163,7 +162,7 @@ if __name__ == '__main__':
 
     # Define specific parameters for different cell types
     f_cell_params = {'tau_m': 1, **common_neuron_params}
-    m_cell_params = {'tau_m': 8, **common_neuron_params}
+    m_cell_params = {'tau_m': 12, **common_neuron_params}
     s_cell_params = {'tau_m': 64, **common_neuron_params}
     a_cell_params = f_cell_params
     x_cell_params  = f_cell_params
@@ -241,7 +240,6 @@ if __name__ == '__main__':
         print(f"\tKernel Size: {len(f_kernel)}")
         print(f"\tKernel Sum: {abs(round(np.sum(f_kernel),3))}")
         print(f"\tWeight Scaler: {args.w_scaler}")
-        print(f"\tTau_m: {args.tau_m}")
         print(f"\tSending to {NEXT_MODULE_IP} through {NEXT_MODULE_PORT}")
 
 
