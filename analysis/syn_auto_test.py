@@ -16,9 +16,9 @@ def generate_random_floats(offset_max):
 
 # min_sparsity, max_sparsity, min_delta, max_delta
 speed_mapper = {
-    "low": (0.16, 0.24, 0.4, 1),
+    "high": (0.4, 0.8, 4, 12),
     "medium": (0.28, 0.36, 1.8, 3),
-    "high": (0.4, 0.8, 4, 12)
+    "low": (0.16, 0.24, 0.4, 1)
 }
 
 
@@ -54,10 +54,12 @@ for speed in speed_mapper:
             fname = dname + f"_v{j+1}"
 
             print(fname)
-            os.system(f"python3 syn_analyzer.py -n {nb_pts} -s {sparsity} -d {delta} -f {fname} -ox {off_x} -oy {off_y} -g")
+            # RUN ON GPU
+            os.system(f"python3 analyzer.py -do syn -n {nb_pts} -s {sparsity} -d {delta} -f {fname} -ox {off_x} -oy {off_y} -g")
             time.sleep(5)
 
-            os.system(f"python3 syn_analyzer.py -n {nb_pts} -s {sparsity} -d {delta} -f {fname} -ox {off_x} -oy {off_y} ")
+            # RUN ON SPINNAKER
+            os.system(f"python3 analyzer.py -do syn -n {nb_pts} -s {sparsity} -d {delta} -f {fname} -ox {off_x} -oy {off_y} ")
             time.sleep(5)
         
 

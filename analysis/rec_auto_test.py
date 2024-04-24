@@ -24,21 +24,17 @@ if __name__ == "__main__":
     # List files with the specified suffix in the directory
     files = list_files_with_suffix(directory_path, file_suffix)
 
-
     nb_pts = 2000
 
     # Print the list of files
     print("Files with suffix '{}' in directory '{}':".format(file_suffix, directory_path))
     for file in files:
-        # print(file)
-        # if file[0:15] == "constant_240423":
+        
         print(file) 
-        os.system(f"python3 rec_analyzer.py -n {nb_pts}  -f ~/tabletop/recordings/{file}")
-        print("\n\n\n")
+        os.system(f"python3 analyzer.py -do rec -n {nb_pts}  -f ~/tabletop/recordings/{file}")
         time.sleep(2)
 
-        os.system(f"python3 rec_analyzer.py -n {nb_pts}  -f ~/tabletop/recordings/{file} -g")
-        print("\n\n\n")
+        os.system(f"python3 analyzer.py -do rec -n {nb_pts}  -f ~/tabletop/recordings/{file} -g")
         time.sleep(2)
 
     

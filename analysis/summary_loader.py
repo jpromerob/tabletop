@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
+import math
 import pdb
  
 
@@ -34,7 +35,7 @@ def consolidate(df, pipeline):
 
     data = df[df['Pipeline'] == pipeline]
 
-    threshold = 99
+    threshold = 85
     outliers_idx = find_outliers(data['Latency'], threshold)
 
     # Remove Latency Outliers
@@ -44,9 +45,9 @@ def consolidate(df, pipeline):
     clean_max_speed = np.delete(np.array(data['MaxSpeed']), outliers_idx)
     clean_dlyd_reps = np.delete(np.array(data['DlydReps']), outliers_idx)*100
 
-    bad_tracking_percentage = 10
+    bad_tracking_percentage = 100
     bad_idx = indices_above_threshold(clean_dlyd_reps, bad_tracking_percentage)
-    print(len(bad_idx))
+    # print(len(bad_idx))
 
     clean_latency = np.delete(clean_latency, bad_idx)
     clean_error = np.delete(clean_error, bad_idx)
@@ -79,7 +80,7 @@ if __name__ == '__main__':
     args = parse_args()
 
     # Read the CSV file into a DataFrame
-    df = pd.read_csv(f"{args.fname}_ok_summary.csv")
+    df = pd.read_csv(f"{args.fname}_summary_ok.csv")
 
     # Filter rows for 'gpu' and 'spinnaker' pipelines
     plot_names = ["Latency", "Error", "Min Error", "Max Speed", "Delayed Reps"]   
@@ -94,7 +95,7 @@ if __name__ == '__main__':
         plt.xticks([1, 2], ["GPU", "SpiNNaker"])
         plt.title(f"Comparison of {plot_names[i]} between GPU and SpiNNaker")
         plt.ylabel(plot_names[i])
-        plt.ylim(0, int(gpu[i].max()*1.5))  # Setting y-limits
+        plt.ylim(0, math.ceil(gpu[i].max()*1.5))  # Setting y-limits
 
         if unit[i] != "m/s":
             stat = "Mean"
