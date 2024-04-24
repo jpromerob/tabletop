@@ -5,6 +5,7 @@ import math
 import socket
 import csv
 import time
+import pdb
 
 import torch
 import torch.nn as nn
@@ -24,9 +25,10 @@ PORT_UDP_DELAYED_DATA = 6262
 PLOT_CURVES = True
 PLOT_FRAMES = False
 MARKER_SIZE = 2
-HIGH_DPI = 500
-MAX_ACCEPTABLE_DLYREPS = 10/100 # 10%
-MAX_NB_REPEATED_VAL = 20
+HIGH_DPI = 200
+EXTRA_PTS = 200
+MAX_ACCEPTABLE_DLYREPS = 50/100 # 10%
+MAX_NB_REPEATED_VAL = 50
 
 
 class CustomCNN(nn.Module):
@@ -268,7 +270,9 @@ def evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t, plot_fl
 
         axis_scaler = 1.2
 
+
         # Subplot 1
+        # axs[0].scatter(synthetic_t, smooth_intime_x, label='Smooth Intime', s=MARKER_SIZE)
         axs[0].scatter(np.arange(len(new_intime_x)), new_intime_x, label='Intime', s=MARKER_SIZE)
         axs[0].scatter(np.arange(len(new_delayed_x)), new_delayed_x, label='Delayed', s=MARKER_SIZE)
         axs[0].set_ylim(0, int(256*axis_scaler))  # Set y-axis limit
@@ -301,6 +305,9 @@ def evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t, plot_fl
 
         plt.close(fig)
     
+    
+        # pdb.set_trace()
+
     return error
 
 
@@ -321,7 +328,7 @@ def find_latency_and_error(delayed_coordinates, intime_coordinates, nb_shifts, f
     for t in range(nb_shifts-1, -1, -1):     
 
         t_shift[t] = t
-        error[t] = evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t, False)
+        error[t] = evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t, True)
 
     latency = np.argmin(error)
     evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, latency, True)
@@ -381,8 +388,7 @@ def write_to_csv(csv_fname, fname, pipeline, latency, error, min_error, max_spee
 
 def get_delayed_coordinates(shared_data):
 
-    offrame_nb = 20
-    nb_frames = int(shared_data['nb_frames']*1.2)+offrame_nb
+    nb_frames = int(shared_data['nb_frames']*1.2)+EXTRA_PTS
 
     res_x = shared_data['res_x']
     res_y = shared_data['res_y']
@@ -447,7 +453,7 @@ def get_delayed_coordinates(shared_data):
 
     shared_data['done_storing_data'] = True
 
-    nb_frame = shared_data['nb_frames'] + offrame_nb
+    nb_frame = shared_data['nb_frames'] + EXTRA_PTS
 
     return frame_array[0:nb_frame], time_array[0:nb_frame], delayed_coordinates[0:nb_frame,:]
 
@@ -519,7 +525,7 @@ def get_coordinates(shared_data, delta_t):
     else:
         # This is specific to SYNTHETIC DATA
         nb_pts_forgotten = 20
-        nb_pts = shared_data['nb_frames']+nb_pts_forgotten
+        nb_pts = shared_data['nb_frames']+EXTRA_PTS+nb_pts_forgotten
         delta_t = 0.001
 
         intime_coordinates = np.zeros((nb_pts,2))
@@ -547,7 +553,24 @@ def get_coordinates(shared_data, delta_t):
         shared_data['done_storing_data'] = True
         os.system("pkill -f puck_generator.py")
 
-    return delayed_coordinates, intime_coordinates
+    
+    windowcita = 40
+    
+    smooth_intime_x = moving_average(intime_coordinates[:,0], windowcita)
+    smooth_intime_y = moving_average(intime_coordinates[:,1], windowcita)
+    diff = int(windowcita/2)
+
+    final_intime_coordinates = np.zeros((shared_data['nb_frames'],2))
+    final_delayed_coordinates = np.zeros((shared_data['nb_frames'],2))
+
+    final_intime_coordinates[:,0] = smooth_intime_x[0:shared_data['nb_frames']]
+    final_intime_coordinates[:,1] = smooth_intime_y[0:shared_data['nb_frames']]
+    final_delayed_coordinates[:,:] = delayed_coordinates[diff:diff+shared_data['nb_frames'],:]
+
+    print(f"final_intime_coordinates: {final_intime_coordinates.shape}")
+    print(f"final_delayed_coordinates: {final_delayed_coordinates.shape}")
+
+    return final_delayed_coordinates, final_intime_coordinates
 
 
 
