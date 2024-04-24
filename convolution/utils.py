@@ -72,7 +72,7 @@ def input_with_timeout(prompt, timeout):
     else:
         return None
 
-def send_kernel(ip_out):
+def send_kernel(ip_out, kernel_file):
     # Define the connection parameters
     hostname = ip_out  # IP address or hostname of Computer B
     port = 22  # Default SSH port is 22
@@ -80,8 +80,8 @@ def send_kernel(ip_out):
     password = '@Q9ep427x'  # Replace with your actual password
 
     # Define the local add remote file paths
-    local_file_path = '../common/kernel.npy' 
-    remote_file_path = '/home/juan/tabletop/common/kernel.npy'  
+    local_file_path = f'../common/{kernel_file}' 
+    remote_file_path = f'/home/juan/tabletop/common/{kernel_file}'  
 
 
     # Create an SSH client
@@ -164,8 +164,9 @@ def make_whole_kernel(name, ip_out, k_sz, hs, w_scaler, thickness, fs_ratio):
 
 
     np.save(f"../common/{name}_kernel.npy", kernel)
-    if ip_out == "172.16.222.30":
-        send_kernel(ip_out)
+    
+    send_kernel("172.16.222.30", name)
+    send_kernel("172.16.222.28", name)
 
     print(f"Kernel '{name}':")
     print(f"\tPositive weights: {round(pos_w,6)}")

@@ -1,7 +1,5 @@
 import argparse
-import sched
 import time
-import pdb
 import math
 import socket
 import multiprocessing
@@ -44,14 +42,13 @@ def ev_generation_process(shared_data):
 
     gpu_flag = shared_data['gpu']
 
+    sparsity = round(shared_data['sparsity'],3)
+
     if gpu_flag:
         print("Sending Data to GPU")
     else:
         print("Sending Data to SpiNNaker")
 
-
-    sparsity = round(shared_data['sparsity'],3)
-    print(f"Sparsity: {sparsity*100}%")
     
     global sock
     while(True):
@@ -76,8 +73,8 @@ def ev_generation_process(shared_data):
             sock.sendto(data, ("172.16.223.122", 3333)) # for SpiNNaker pipeline
 
 
-        x_norm = int(shared_data['cy']/dim.fl*100)
-        y_norm = int(shared_data['cx']/dim.fw*100)
+        x_norm = shared_data['cy']/dim.fl*100
+        y_norm = shared_data['cx']/dim.fw*100
         data = "{},{}".format(x_norm, y_norm).encode()
         sock.sendto(data, ("172.16.222.30", 2626))
         # print(f"Sending {x_norm},{y_norm}")
@@ -114,7 +111,6 @@ def trajectory_process(shared_data):
     delta = shared_data['delta']
     delta_0 = round(delta*0.003,3)
 
-    print(f"Delta XY: {delta}")
     while(True):
 
         if shared_data['mode'] == 'line_x':
