@@ -165,8 +165,8 @@ def make_whole_kernel(name, ip_out, k_sz, hs, w_scaler, thickness, fs_ratio):
 
     np.save(f"../common/{name}_kernel.npy", kernel)
     
-    send_kernel("172.16.222.30", name)
-    send_kernel("172.16.222.28", name)
+    send_kernel("172.16.222.30", f"{name}_kernel.npy")
+    send_kernel("172.16.222.28", f"{name}_kernel.npy")
 
     print(f"Kernel '{name}':")
     print(f"\tPositive weights: {round(pos_w,6)}")
