@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
+import pdb
  
 
 def find_outliers(arr, val):
@@ -22,48 +23,70 @@ def parse_args():
 
     return parser.parse_args()
 
+def indices_above_threshold(arr, threshold):
+    indices = []
+    for i, value in enumerate(arr):
+        if value > threshold:
+            indices.append(i)
+    return indices
+
+def consolidate(df, pipeline):
+
+    data = df[df['Pipeline'] == pipeline]
+
+    threshold = 99
+    outliers_idx = find_outliers(data['Latency'], threshold)
+
+    # Remove Latency Outliers
+    clean_latency = np.delete(np.array(data['Latency']), outliers_idx)
+    clean_error = np.delete(np.array(data['Error']), outliers_idx)
+    clean_min_error = np.delete(np.array(data['MinError']), outliers_idx)
+    clean_max_speed = np.delete(np.array(data['MaxSpeed']), outliers_idx)
+    clean_dlyd_reps = np.delete(np.array(data['DlydReps']), outliers_idx)*100
+
+    bad_tracking_percentage = 10
+    bad_idx = indices_above_threshold(clean_dlyd_reps, bad_tracking_percentage)
+    print(len(bad_idx))
+
+    clean_latency = np.delete(clean_latency, bad_idx)
+    clean_error = np.delete(clean_error, bad_idx)
+    clean_min_error = np.delete(clean_min_error, bad_idx)
+    clean_max_speed = np.delete(clean_max_speed, bad_idx)
+    clean_dlyd_reps = np.delete(clean_dlyd_reps, bad_idx)
+
+    conso = [
+        clean_latency,
+        clean_error,
+        clean_min_error,
+        clean_max_speed,
+        clean_dlyd_reps
+    ]
+
+
+    print(f"\nConsolidated Mean values for {pipeline} pipeline:")
+    print(f"Latency: {round(clean_latency.mean(), 3)} [ms]")
+    print(f"Error: {round(clean_error.mean(), 3)} [mm]")
+    print(f"MinError: {round(clean_min_error.mean(), 3)} [mm]")
+    print(f"MaxSpeed: {round(clean_max_speed.max(), 3)} [m/s]")
+    print(f"Over {len(clean_latency)} samples")
+
+    # pdb.set_trace()
+
+    return conso
+
 if __name__ == '__main__':
 
     args = parse_args()
 
     # Read the CSV file into a DataFrame
-    df = pd.read_csv(f"{args.fname}_summary.csv")
+    df = pd.read_csv(f"{args.fname}_ok_summary.csv")
 
     # Filter rows for 'gpu' and 'spinnaker' pipelines
-    gpu_data = df[df['Pipeline'] == 'gpu']
-    spinnaker_data = df[df['Pipeline'] == 'spinnaker']
+    plot_names = ["Latency", "Error", "Min Error", "Max Speed", "Delayed Reps"]   
+    unit = ["ms", "mm", "mm", "m/s", "..."]     
 
-    threshold = 99
-    outliers_idx_gpu = find_outliers(gpu_data['Latency'], threshold)
-    outliers_idx_spinnaker = find_outliers(spinnaker_data['Latency'], threshold)
-
-
-    clean_gpu_latency = np.delete(np.array(gpu_data['Latency']), outliers_idx_gpu)
-    clean_gpu_error = np.delete(np.array(gpu_data['Error']), outliers_idx_gpu)
-    clean_gpu_min_error = np.delete(np.array(gpu_data['MinError']), outliers_idx_gpu)
-    clean_gpu_max_speed = np.delete(np.array(gpu_data['MaxSpeed']), outliers_idx_gpu)
-
-    clean_spinnaker_latency = np.delete(np.array(spinnaker_data['Latency']), outliers_idx_spinnaker)
-    clean_spinnaker_error = np.delete(np.array(spinnaker_data['Error']), outliers_idx_spinnaker)
-    clean_spinnaker_min_error = np.delete(np.array(spinnaker_data['MinError']), outliers_idx_spinnaker)
-    clean_spinnaker_max_speed = np.delete(np.array(spinnaker_data['MaxSpeed']), outliers_idx_spinnaker)
-
-    plot_names = ["Latency", "Error", "Min Error", "Max Speed"]   
-    unit = ["ms", "mm", "mm", "m/s"]     
-
-    gpu = [
-        clean_gpu_latency,
-        clean_gpu_error,
-        clean_gpu_min_error,
-        clean_gpu_max_speed
-    ]
-
-    spinnaker = [
-        clean_spinnaker_latency,
-        clean_spinnaker_error,
-        clean_spinnaker_min_error,
-        clean_spinnaker_max_speed
-    ]
+    gpu = consolidate(df, "gpu")
+    spinnaker = consolidate(df, "spinnaker")
 
     for i in range(len(gpu)):
         plt.figure(figsize=(8, 6))
@@ -88,15 +111,3 @@ if __name__ == '__main__':
         plt.grid(True)
         plt.savefig(f"{args.fname}_BoxPlot{plot_names[i]}")
 
-    # Print the consolidated mean values for each column
-    print("Consolidated Mean values for GPU pipeline:")
-    print(f"Latency: {round(clean_gpu_latency.mean(), 3)} [ms]")
-    print(f"Error: {round(clean_gpu_error.mean(), 3)} [mm]")
-    print(f"MinError: {round(clean_gpu_min_error.mean(), 3)} [mm]")
-    print(f"MaxSpeed: {round(clean_gpu_max_speed.max(), 3)} [m/s]")
-
-    print("\nConsolidated Mean values for Spinnaker pipeline:")
-    print(f"Latency: {round(clean_spinnaker_latency.mean(), 3)} [ms]")
-    print(f"Error: {round(clean_spinnaker_error.mean(), 3)} [mm]")
-    print(f"MinError: {round(clean_spinnaker_min_error.mean(), 3)} [mm]")
-    print(f"MaxSpeed: {round(clean_spinnaker_max_speed.max(), 3)} [m/s]")

@@ -3,16 +3,22 @@ import numpy as np
 import time
 import torch
 import torch.nn as nn
-import matplotlib.pyplot as plt
 import math
 import sys
 import socket
 from datetime import datetime
 import multiprocessing
+from matplotlib.patches import Circle
 import argparse
 import pdb
 import os
 import csv
+
+import warnings
+warnings.filterwarnings("ignore", message="Unable to import Axes3D")
+import matplotlib.pyplot as plt
+
+
 
 sys.path.append('../common')
 from tools import Dimensions
@@ -24,6 +30,21 @@ PORT_UDP_DELAYED_DATA = 6262
 
 PLOT_CURVES = True
 PLOT_FRAMES = False
+MARKER_SIZE = 2
+HIGH_DPI = 500
+
+def count_repeated_elements(arr):
+    count = 0
+    chain_len = max(50,int(len(arr)*1/100))
+    for i in range(chain_len, len(arr)):
+        repeated = True
+        for j in range(1, chain_len):
+            if arr[i][0] != arr[i - j][0] or arr[i][1] != arr[i - j][1]:
+                repeated = False
+        if repeated:
+            count+=1
+    print(f"{count}/{len(arr)} (i.e. {count/len(arr)*100}%) repeated elements (with chain len = {chain_len})")
+    return count/len(arr)
 
 def moving_average(data, window_size):
     weights = np.repeat(1.0, window_size) / window_size
@@ -46,8 +67,8 @@ def analyze_speed(fname, delayed_coordinates, window_size):
 
 
     # Smoothing the signal using a moving average filter
-    on_x = delayed_coordinates[:,0]
-    on_y = delayed_coordinates[:,1]
+    on_x = delayed_coordinates[:,1]
+    on_y = delayed_coordinates[:,0]
     smooth_on_x = moving_average(on_x, window_size)
     smooth_on_y = moving_average(on_y, window_size)
 
@@ -67,31 +88,37 @@ def analyze_speed(fname, delayed_coordinates, window_size):
         # Create a figure and three subplots
         fig, axs = plt.subplots(3, 1, figsize=(8, 10))
 
+        axis_scaler = 1.2
+
         # Plot speed along X axis
-        axs[0].plot(on_x, 'k')
-        axs[0].plot(smooth_on_x, 'r')
-        axs[0].set_title('X Position')
-        axs[0].set_xlabel('Time')
-        axs[0].set_ylabel('X')
+        axs[0].scatter(np.arange(len(on_x)), on_x, color='k', s=MARKER_SIZE)
+        axs[0].scatter(np.arange(len(smooth_on_x)),smooth_on_x, color='r', s=MARKER_SIZE)
+        axs[0].set_xlabel('Time [ms]')
+        axs[0].set_ylabel('X Position (Pixel Space)')
+        axs[0].set_ylim(0, int(256*axis_scaler))
 
         # Plot speed along Y axis
-        axs[1].plot(on_y, 'k')
-        axs[1].plot(smooth_on_y, 'g')
-        axs[1].set_title('Y Position')
-        axs[1].set_xlabel('Time')
-        axs[1].set_ylabel('Y')
+        axs[1].scatter(np.arange(len(on_y)), on_y, color='k', s=MARKER_SIZE)
+        axs[1].scatter(np.arange(len(smooth_on_y)), smooth_on_y, color='g', s=MARKER_SIZE)
+        axs[1].set_xlabel('Time [ms]')
+        axs[1].set_ylabel('Y Position (Pixel Space)')
+        axs[1].set_ylim(0, int(165*axis_scaler))
 
         # Plot overall speed
-        axs[2].plot(speed_x, 'r')
-        axs[2].plot(speed_y, 'g')
-        axs[2].plot(full_speed, 'b')
-        axs[2].set_title('Overall Speed')
-        axs[2].set_xlabel('Time')
-        axs[2].set_ylabel('Speed')
+        # axs[2].scatter(np.arange(len(speed_x)), speed_x, color='r', s=MARKER_SIZE)
+        # axs[2].scatter(np.arange(len(speed_y)), speed_y, color='g', s=MARKER_SIZE)
+        # axs[2].scatter(np.arange(len(full_speed)), full_speed, color='b', s=MARKER_SIZE)
+
+        axs[2].plot(speed_x, color='r')
+        axs[2].plot(speed_y, color='g')
+        axs[2].plot(full_speed, color='b')
+
+        axs[2].set_xlabel('Time [ms]')
+        axs[2].set_ylabel('Speed [m/s]')
 
         # Adjust layout to prevent overlapping
         plt.tight_layout()
-        plt.savefig(f'images/{fname}_speed_profiles.png')
+        plt.savefig(f'images/{fname}_speed_profiles.png', format='png', dpi=HIGH_DPI)
 
         plt.clf()
 
@@ -111,7 +138,8 @@ def analyze_speed(fname, delayed_coordinates, window_size):
         plt.xlim(0,5) 
         plt.ylim(0,1000) 
         plt.grid(True)
-        plt.savefig(f'images/{fname}_speed_histogram.png')
+        plt.savefig(f'images/{fname}_speed_histogram.png', format='png', dpi=HIGH_DPI)
+        plt.clf()
 
 
     max_speed = round(np.max(full_speed),3)
@@ -123,7 +151,7 @@ def analyze_speed(fname, delayed_coordinates, window_size):
     return max_speed, mean_speed, mode_value
 
 
-def evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t):
+def evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t, plot_flag):
 
     if t > 0:
         new_intime_x = intime_x[0:-t]
@@ -145,17 +173,17 @@ def evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t):
     std_y = np.std(e_y_array)
 
 
-    clean_x = e_x_array[(e_x_array<e_x+std_x) & (e_x_array>e_x-std_x)]
-    clean_y = e_y_array[(e_y_array<e_y+std_y) & (e_y_array>e_y-std_y)]
+    # clean_x = e_x_array[(e_x_array<e_x+std_x) & (e_x_array>e_x-std_x)]
+    # clean_y = e_y_array[(e_y_array<e_y+std_y) & (e_y_array>e_y-std_y)]
 
-    clean_error_x = np.mean(clean_x)
-    clean_error_y = np.mean(clean_y)
-
-
-    error = round(math.sqrt(clean_error_x**2 + clean_error_y**2),3)
+    clean_error_x = np.mean(e_x_array)
+    clean_error_y = np.mean(e_y_array)
 
 
-    if PLOT_CURVES:
+    error = math.sqrt(clean_error_x**2 + clean_error_y**2)
+
+
+    if PLOT_CURVES and plot_flag:
 
         # Create figure and subplots
         fig, axs = plt.subplots(2,  figsize=(8, 8))
@@ -163,22 +191,22 @@ def evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t):
         axis_scaler = 1.2
 
         # Subplot 1
-        axs[0].plot(new_delayed_x, label='Delayed')
-        axs[0].plot(new_intime_x, label='Intime')
+        axs[0].scatter(np.arange(len(new_intime_x)), new_intime_x, label='Intime', s=MARKER_SIZE)
+        axs[0].scatter(np.arange(len(new_delayed_x)), new_delayed_x, label='Delayed', s=MARKER_SIZE)
         axs[0].set_ylim(0, int(256*axis_scaler))  # Set y-axis limit
         axs[0].set_xlabel('Time')
         axs[0].set_ylabel('X (Pixel Space)')
         axs[0].legend()
 
         # Subplot 2
-        axs[1].plot(new_delayed_y, label='Delayed')
-        axs[1].plot(new_intime_y, label='Intime')
+        axs[1].scatter(np.arange(len(new_intime_y)), new_intime_y, label='Intime', s=MARKER_SIZE)
+        axs[1].scatter(np.arange(len(new_delayed_y)), new_delayed_y, label='Delayed', s=MARKER_SIZE)
         axs[1].set_ylim(0, int(165*axis_scaler))  # Set y-axis limit
         axs[1].set_xlabel('Time')
         axs[1].set_ylabel('Y (Pixel Space)')
         axs[1].legend()
 
-        plt.suptitle(f'Delta t = {t} [ms] --> Error = {error} [mm]')  # Add super title
+        plt.suptitle(f'Delta t = {t} [ms] --> Error = {round(error,1)} [mm]')  # Add super title
 
         # Adjust layout
         plt.tight_layout()
@@ -186,8 +214,11 @@ def evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t):
         # Show plot
 
         if t == 0:
-            plt.savefig(f'images/{fname}_x_y_on_off_original.png')
-        plt.savefig(f'images/{fname}_x_y_on_off_best.png')
+            shift_label = "original"
+        else:
+            shift_label = "best"
+        plt.savefig(f'images/{fname}_x_y_comparison_{shift_label}.png', format='png', dpi=HIGH_DPI)
+        plt.clf()
         
 
         plt.close(fig)
@@ -207,19 +238,22 @@ def find_latency_and_error(delayed_coordinates, intime_coordinates, nb_shifts, f
 
     
     error = np.zeros(nb_shifts)
+    t_shift = np.zeros(nb_shifts)
+
     for t in range(nb_shifts-1, -1, -1):     
 
-        error[t] = evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t)
+        t_shift[t] = t
+        error[t] = evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t, False)
 
     latency = np.argmin(error)
-
-    evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, latency)
-
-
-    return latency, error[0], error[latency]
+    evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, latency, True)
+    evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, 0, True)
 
 
-def write_to_csv(csv_fname, fname, pipeline, latency, error, min_error, max_speed, mean_speed, mode_value):
+    return latency, error, t_shift
+
+
+def write_to_csv(csv_fname, fname, pipeline, latency, error, min_error, max_speed, mean_speed, dlydreps):
     # Check if the file exists
     file_exists = os.path.isfile(csv_fname)
 
@@ -229,10 +263,10 @@ def write_to_csv(csv_fname, fname, pipeline, latency, error, min_error, max_spee
 
         # Write the header if the file is newly created
         if not file_exists:
-            writer.writerow(['Recording', 'Pipeline', 'Latency', 'Error', 'MinError', 'MaxSpeed', 'MeanSpeed', 'ModeSpeed'])
+            writer.writerow(['Recording', 'Pipeline', 'Latency', 'Error', 'MinError', 'MaxSpeed', 'MeanSpeed', 'DlydReps'])
 
         # Write the new line
-        writer.writerow([fname, pipeline, latency, error, min_error, max_speed, mean_speed, mode_value])
+        writer.writerow([fname, pipeline, latency, error, min_error, max_speed, mean_speed, dlydreps])
 
 
 def intime_process(shared_data):
@@ -407,15 +441,46 @@ def ground_truth_process(shared_data):
     intime_coordinates = intime_coordinates[nb_pts_forgotten:,:]
     delayed_coordinates = delayed_coordinates[nb_pts_forgotten:,:]
 
+    # intime_reps = count_repeated_elements(intime_coordinates)
+    delayed_reps = count_repeated_elements(delayed_coordinates)
 
     max_speed, mean_speed, mode_value = analyze_speed(iname, intime_coordinates, window_size)
-    latency, error, min_error = find_latency_and_error(delayed_coordinates, intime_coordinates, nb_shifts, iname)
+    latency, error, t_shift = find_latency_and_error(delayed_coordinates, intime_coordinates, nb_shifts, iname)
+    
+    if PLOT_CURVES:
 
-    write_to_csv("syn_summary.csv", fname, pipeline, latency, error, min_error, max_speed, mean_speed, mode_value)
+        # Find the index of the minimum error
+        min_error_index = np.argmin(error)
 
-    error_mm = int(error/shared_data['hs'])
-    min_error_mm = int(min_error/shared_data['hs'])
-    print(f"Latency: {latency} ms | Error[t=0]: {error_mm} [mm]")
+        plt.scatter(t_shift, error, color='k', s=40)
+        plt.scatter(t_shift[min_error_index], error[min_error_index], marker='x', color='r', s=100)
+        plt.text(t_shift[min_error_index], error[min_error_index]*0.6, f"Latency = {t_shift[min_error_index]} [ms]", fontsize=12, color='red', bbox=dict(facecolor='white', alpha=0.5))
+
+        
+        plt.title('Finding Latency: Time Shift vs Error')
+        plt.xlabel('Time Shift in [ms]')
+        plt.ylabel('Error inn [mm]')
+
+        # Setting limits
+        plt.xlim(0, t_shift[-1]+1)
+        plt.ylim(0, 10)
+
+        plt.savefig(f'images/{iname}_t_shift_vs_error.png', format='png', dpi=HIGH_DPI)
+        plt.clf()
+
+    real_error = round(error[0],3)
+    best_error = round(error[latency],3)
+
+    if delayed_reps > 10/100:
+        print(f"Delayed reps: {delayed_reps} --> KO")
+        write_to_csv("syn_ko_summary.csv", fname, pipeline, latency, real_error, best_error, max_speed, mean_speed, delayed_reps)
+    else:
+        print(f"Delayed reps: {delayed_reps} --> OK")
+        write_to_csv("syn_ok_summary.csv", fname, pipeline, latency, real_error, best_error, max_speed, mean_speed, delayed_reps)
+
+    real_error_mm = int(real_error/shared_data['hs'])
+    best_error_mm = int(best_error/shared_data['hs'])
+    print(f"Latency: {latency} ms | Error[t=0]: {real_error_mm} [mm]")
 
 
 
