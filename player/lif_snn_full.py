@@ -291,8 +291,9 @@ if __name__ == '__main__':
         cv2.namedWindow(window_name)
 
 
-    # Check if GPU is available
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    gpu_index = 1
+    torch.cuda.set_device(gpu_index)
+    device = torch.device("cuda")
 
     torch.set_float32_matmul_precision('high')
 
