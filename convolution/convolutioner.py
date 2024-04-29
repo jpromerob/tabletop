@@ -63,7 +63,7 @@ if __name__ == '__main__':
     print("Generating Kernels ... \n")
     f_kernel = make_whole_kernel("fast", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 1.8)
     m_kernel = make_whole_kernel("medium", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 0.9)
-    s_kernel = make_whole_kernel("slow", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 0.5)
+    s_kernel = make_whole_kernel("slow", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 0.3)
 
 
 
