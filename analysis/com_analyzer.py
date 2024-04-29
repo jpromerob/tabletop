@@ -328,12 +328,13 @@ def find_latency_and_error(delayed_coordinates, intime_coordinates, nb_shifts, f
     for t in range(nb_shifts-1, -1, -1):     
 
         t_shift[t] = t
-        error[t] = evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t, True)
+        error[t] = evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, t, False)
 
     latency = np.argmin(error)
     evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, latency, True)
     evaluate_latency(fname, delayed_x, delayed_y, intime_x, intime_y, 0, True)
 
+    print(f"Latency: {latency} [ms]")
 
     if PLOT_CURVES:
 
@@ -388,7 +389,8 @@ def write_to_csv(csv_fname, fname, pipeline, latency, error, min_error, max_spee
 
 def get_delayed_coordinates(shared_data):
 
-    nb_frames = int(shared_data['nb_frames']*1.2)+EXTRA_PTS
+    nb_pts_forgotten = 200
+    nb_frames = int(shared_data['nb_frames']*1.2)+EXTRA_PTS+nb_pts_forgotten
 
     res_x = shared_data['res_x']
     res_y = shared_data['res_y']
@@ -447,9 +449,9 @@ def get_delayed_coordinates(shared_data):
     frame_array = frame_array.transpose(2,1,0)
 
     # Let's trim the arrays based on number of actual recorded frames
-    time_array = time_array[0:frame_counter]
-    delayed_coordinates = delayed_coordinates[0:frame_counter]
-    frame_array = frame_array[:,:,0:frame_counter]
+    time_array = time_array[nb_pts_forgotten:frame_counter]
+    delayed_coordinates = delayed_coordinates[nb_pts_forgotten:frame_counter]
+    frame_array = frame_array[:,:,nb_pts_forgotten:frame_counter]
 
     shared_data['done_storing_data'] = True
 
