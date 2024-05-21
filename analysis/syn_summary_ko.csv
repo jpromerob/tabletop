@@ -1,3 +1,10 @@
 Recording,Pipeline,Latency,Error,MinError,MaxSpeed,MeanSpeed,DlydReps
 ZZZuper,gpu,44,148.375,148.312,1.183,0.558,0.975
 ZZZuper,gpu,95,147.275,147.036,1.233,0.547,0.975
+trash,spinnaker,99,84.876,79.39,0.207,0.122,0.614
+z_all-v2,spinnaker,0,185.518,185.518,0.207,0.12,0.975
+z_all,spinnaker,0,185.73,185.73,0.216,0.123,0.975
+z_slow,spinnaker,99,20.518,8.02,0.287,0.249,0.71
+z_slow,spinnaker,99,23.598,12.23,0.322,0.208,0.622
+z_slow,spinnaker,48,149.526,148.66,1.154,0.713,0.95
+z_only_sf_npc4,spinnaker,0,168.398,168.398,1.113,0.523,0.95
