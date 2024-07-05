@@ -106,14 +106,6 @@ def get_weight_list_from_conv_to_mapper(mode, Xsz, Ysz, weight):
         return weight_list
 
 
-def get_weight_list_from_input_to_conv(Xsz, Ysz, kernel):
-
-
-
-    pass
-
-
-
 class ControlNet(torch.nn.Module):
     def __init__(self, in_x_sz, in_y_sz, mode): #x size, y size (from robot's perspective)
         super(ControlNet, self).__init__()

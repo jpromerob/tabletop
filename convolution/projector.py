@@ -38,7 +38,7 @@ def parse_args():
     parser.add_argument('-cb', '--current-board', type= int, help="Current Computing Board (172.16.223.XX)", default=43)
     parser.add_argument('-nb', '--next-board', type= int, help="Next Computing Board (172.16.223.XX)", default=-1)
     parser.add_argument('-dp', '--display-pc', type= int, help="Display PC (172.16.222.XX)", default=30)
-    parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=240)
+    parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=300)
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     def create_list():
 
         conn_list = []
-        weight = 100
+        weight = 1000
         delay = 0
 
         for pre_y in range(HEIGHT):

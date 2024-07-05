@@ -38,7 +38,7 @@ def parse_args():
     parser.add_argument('-cb', '--current-board', type= int, help="Current Computing Board (172.16.223.XX)", default=37)
     parser.add_argument('-nb', '--next-board', type= int, help="Next Computing Board (172.16.223.XX)", default=43)
     parser.add_argument('-dp', '--display-pc', type= int, help="Display PC (172.16.222.XX)", default=30)
-    parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=240)
+    parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=300)
     parser.add_argument('-m', '--mode', type=str, help="Mode ('game' vs 'test')", default="game")
 
     return parser.parse_args()
@@ -57,7 +57,8 @@ if __name__ == '__main__':
     if args.next_board < 0:
         IS_THERE_NEXT_STEP = False
 
-
+    if IS_THERE_NEXT_STEP:
+        print("There is next step !!!!!!!!!!!!!!!!!!!!!!!!")
     print("Configuring Infrastructure ... ")
     SUB_WIDTH = 16
     SUB_HEIGHT = 8
@@ -154,7 +155,7 @@ if __name__ == '__main__':
         if IS_THERE_NEXT_STEP:
             sock.sendto(data, (NEXT_BOARD_SPIF_IP, NEXT_BOARD_SPIF_PORT))
         sock.sendto(data, (DISPLAY_PC_IP, DISPLAY_PC_PORT))
-        sock.sendto(data, ("172.16.222.28", 6565)) # @TODO: remove this line
+        # sock.sendto(data, ("172.16.222.28", 6565)) # @TODO: remove this line
 
 
     print("Creating Network ... ")
