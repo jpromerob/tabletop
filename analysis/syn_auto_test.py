@@ -53,14 +53,24 @@ for speed in speed_mapper:
 
             fname = dname + f"_v{j+1}"
 
+            # print(fname)
+            # # RUN ON GPU
+            # os.system(f"python3 analyzer.py -do syn -n {nb_pts} -s {sparsity} -d {delta} -f {fname} -ox {off_x} -oy {off_y} -m circle -g")
+            # time.sleep(5)
+
+            # # RUN ON SPINNAKER
+            # os.system(f"python3 analyzer.py -do syn -n {nb_pts} -s {sparsity} -d {delta} -f {fname} -ox {off_x} -oy {off_y} -m circle ")
+            # time.sleep(5)
+
             print(fname)
             # RUN ON GPU
-            os.system(f"python3 analyzer.py -do syn -n {nb_pts} -s {sparsity} -d {delta} -f {fname} -ox {off_x} -oy {off_y} -g")
+            os.system(f"python3 analyzer.py -do syn -n {nb_pts} -s {sparsity} -d {delta/10} -f {fname} -ox {off_x} -oy {off_y} -m zigzag -g")
             time.sleep(5)
 
             # RUN ON SPINNAKER
-            os.system(f"python3 analyzer.py -do syn -n {nb_pts} -s {sparsity} -d {delta} -f {fname} -ox {off_x} -oy {off_y} ")
+            os.system(f"python3 analyzer.py -do syn -n {nb_pts} -s {sparsity} -d {delta/10} -f {fname} -ox {off_x} -oy {off_y} -m zigzag ")
             time.sleep(5)
+            
         
 
 

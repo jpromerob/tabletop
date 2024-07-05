@@ -175,6 +175,7 @@ def delayed_process(shared_data):
         print("Receiving X,Y from SpiNNaker")
 
         in_port = shared_data['board']*100+87
+        print(f"\n\n\n\n\n{in_port} !!!!!!!\n\n\n\n\n")
        
 
         

@@ -2,6 +2,7 @@ import argparse
 import time
 import math
 import socket
+import random
 import multiprocessing
 
 # Add necessary imports
@@ -98,18 +99,33 @@ def trajectory_process(shared_data):
 
     cx_0 = int(shared_data['width']/2)
     cy_0 = int(shared_data['height']/2)
-    cx = cx_0
-    cy = cy_0
+    dx_dy_ratio = shared_data['dx_dy_ratio']
+
+    delta = shared_data['delta']
+    t = 0
 
     if shared_data['mode'] == 'line_x':
         go_right = True
     if shared_data['mode'] == 'line_y':
         go_down = True
+    if shared_data['mode'] == 'zigzag':
+        go_right = True
+        go_down = True
+        if dx_dy_ratio >= 1:
+            dx = shared_data['delta']
+            dy = dx/dx_dy_ratio
+        else:
+            dy = shared_data['delta']
+            dx = dy*dx_dy_ratio
 
-    t = 0
 
-    delta = shared_data['delta']
-    delta_0 = round(delta*0.003,3)
+
+    delta_0 = round(delta*0.003,10)
+
+    cx = cx_0*(1+offx)
+    cy = cy_0*(1+offy)
+
+    print(f"cx: {cx} | cy: {cy}")
 
     while(True):
 
@@ -141,9 +157,37 @@ def trajectory_process(shared_data):
                     go_down = True
                     cy += delta
 
+        
+        if shared_data['mode'] == 'zigzag':
+            if go_right:
+                if cx + dx <= max_x:
+                    cx += dx
+                else:
+                    go_right = False
+                    cx -= dx
+            if not go_right:
+                if cx - dx >= min_x:
+                    cx -= dx
+                else:
+                    go_right = True
+                    cx += dx
+                    
+            if go_down:
+                if cy + dy <= max_y:
+                    cy += dy
+                else:
+                    go_down = False
+                    cy -= dy
+            if not go_down:
+                if cy - dy >= min_y:
+                    cy -= dy
+                else:
+                    go_down = True
+                    cy += dy
+
         if shared_data['mode'] == 'circle':
-            cx = cx_0 + cx_0*(((math.sin(0.7*t+math.pi/3))*math.sin(0.4*t+math.pi/8)*math.sin(t))*amplitude_x+offx)
-            cy = cy_0 + cy_0*(((math.cos(0.3*t+math.pi/7))*math.cos(0.5*t+math.pi/4)*math.cos(t))*amplitude_y+offy)
+            cx = cx_0 + cx_0*(((math.sin(0.7*t+math.pi/3))*math.sin(0.4*t+math.pi/8)*math.sin(t))*amplitude_x)
+            cy = cy_0 + cy_0*(((math.cos(0.3*t+math.pi/7))*math.cos(0.5*t+math.pi/4)*math.cos(t))*amplitude_y)
 
 
 
@@ -165,9 +209,10 @@ def parse_args():
     parser.add_argument('-y', '--height', type=int, help="Size Y axis", default=165)
     parser.add_argument('-s', '--sparsity', type=float, help="Sparsity", default=0.2)
     parser.add_argument('-d', '--delta', type=float, help="Delta XY", default=0.2)
-    parser.add_argument('-m', '--mode', type=str, help="Speed", default="circle")
+    parser.add_argument('-m', '--mode', type=str, help="mode", default="circle")
     parser.add_argument('-ox', '--offx', type=float, help="Offset X (percentage)", default=0)
     parser.add_argument('-oy', '--offy', type=float, help="Offset Y (percentage)", default=0)
+    parser.add_argument('-xyr', '--xyratio', type=float, help="X-Y ratio in ZigZag", default=1)
 
 
     return parser.parse_args()
@@ -183,19 +228,26 @@ if __name__ == "__main__":
 
     shared_data = multiprocessing.Manager().dict()
 
-    shared_data['cx'] = 0
-    shared_data['cy'] = 0
+
     shared_data['ip'] = args.ip
     shared_data['port'] = args.port
+    shared_data['gpu'] = args.gpu
+
     shared_data['width'] = args.width
     shared_data['height'] = args.height
+
+    shared_data['mode'] = args.mode
+
+    shared_data['cx'] = 0
+    shared_data['cy'] = 0
+
     shared_data['sparsity'] = args.sparsity
     shared_data['delta'] = args.delta
-    shared_data['mode'] = args.mode
-    shared_data['gpu'] = args.gpu
 
     shared_data['offx'] = args.offx
     shared_data['offy'] = args.offy
+
+    shared_data['dx_dy_ratio'] = args.xyratio
 
     shared_data['kernel'] = np.load("../common/kernel.npy")
     shared_data['indices'] = np.argwhere(shared_data['kernel']>0)
