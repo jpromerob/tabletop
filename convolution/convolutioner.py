@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument('-ws', '--w-scaler', type=float, help="Weight Scaler", default=0.04) 
     parser.add_argument('-th', '--thickness', type=int, help="Kernel edge thickness", default=2)
     parser.add_argument('-r', '--ratio', type=float, help="f/s ratio", default=1.0) # 
-    parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=240)
+    parser.add_argument('-rt', '--runtime', type=int, help="Runtime in [m]", default=300)
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     print("Generating Kernels ... \n")
     f_kernel = make_whole_kernel("fast", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 1.8)
     m_kernel = make_whole_kernel("medium", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 0.9)
-    s_kernel = make_whole_kernel("slow", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 0.3)
+    s_kernel = make_whole_kernel("slow", args.ip_pc, args.ks, dim.hs, args.w_scaler, args.thickness, 0.4)
 
 
 
@@ -160,75 +160,126 @@ if __name__ == '__main__':
         'i_offset': 0.0
     }
 
-    # Define specific parameters for different cell types
-    f_cell_params = {'tau_m': 1, **common_neuron_params}
-    m_cell_params = {'tau_m': 12, **common_neuron_params}
-    s_cell_params = {'tau_m': 64, **common_neuron_params}
-    a_cell_params = f_cell_params
-    x_cell_params  = f_cell_params
 
 
 
     p.setup(timestep=1.0, n_boards_required=24, cfg_file=CFG_FILE)
 
 
-    IN_POP_LABEL = "input_a"
-    F_CNN_POP_LABEL = "f_cnn"
-    M_CNN_POP_LABEL = "m_cnn"
-    S_CNN_POP_LABEL = "s_cnn"
-
     celltype = p.IF_curr_exp
     p.set_number_of_neurons_per_core(celltype, (NPC_X, NPC_Y))
 
 
+    ENABLE_F_SCNN = True
+    ENABLE_M_SCNN = True
+    ENABLE_S_SCNN = True
+
+
+    #########################################################################################################
+    #                                               Input Layer                                             #
+    #########################################################################################################
 
     # Setting up SPIF Input
+    IN_POP_LABEL = "input_a"
     p_spif_virtual_a = p.Population(WIDTH * HEIGHT, p.external_devices.SPIFRetinaDevice(
                                     pipe=0, width=WIDTH, height=HEIGHT,
                                     sub_width=SUB_WIDTH, sub_height=SUB_HEIGHT, 
                                     chip_coords=CHIP_I), label=IN_POP_LABEL)
 
-    # Setting up Fast (high-speed) Convolutional Layer
-    f_cnn_conn = p.ConvolutionConnector(kernel_weights=f_kernel)
-    f_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**f_cell_params),
-                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=F_CNN_POP_LABEL)
 
-    # Setting up Mid (medium-speed) Convolutional Layer
-    m_cnn_conn = p.ConvolutionConnector(kernel_weights=m_kernel)
-    m_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**m_cell_params),
-                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_CNN_POP_LABEL)
+    #########################################################################################################
+    #                                               Fast SCNN                                               #
+    #########################################################################################################
 
-    # Setting up Slow (low-speed) Convolutional Layer
-    s_cnn_conn = p.ConvolutionConnector(kernel_weights=s_kernel)
-    s_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**s_cell_params),
-                            structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_CNN_POP_LABEL)
+    if ENABLE_F_SCNN:
+
+        # Setting up Fast (high-speed) Convolutional Layer
+        F_CNN_POP_LABEL = "f_cnn"
+
+        # Define specific parameters for different cell types
+        f_cell_params = {'tau_m': 1, **common_neuron_params}
+
+        # Define Convolutional Connector
+        f_cnn_conn = p.ConvolutionConnector(kernel_weights=f_kernel)
+        f_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**f_cell_params),
+                                structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=F_CNN_POP_LABEL)
+
+        # Create Projections from Input Layer to Convolutional Layer
+        p.Projection(p_spif_virtual_a, f_cnn_pop, f_cnn_conn, p.Convolution())
+
+        # Send spikes from Convolutional Layer out (through SPIF)
+        spif_f_lsc = p.external_devices.SPIFLiveSpikesConnection([F_CNN_POP_LABEL], SPIF_IP_F, SPIF_PORT)
+        spif_f_lsc.add_receive_callback(F_CNN_POP_LABEL, forward_f_cnn_data)
+        spif_f_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+            database_notify_port_num=spif_f_lsc.local_port, chip_coords=CHIP_F), label="f_cnn_output")
+        p.external_devices.activate_live_output_to(f_cnn_pop, spif_f_cnn_output)
 
 
-    # Projection from SPIF virtual to CNN populations
-    p.Projection(p_spif_virtual_a, f_cnn_pop, f_cnn_conn, p.Convolution())
-    p.Projection(p_spif_virtual_a, m_cnn_pop, m_cnn_conn, p.Convolution())
-    p.Projection(p_spif_virtual_a, s_cnn_pop, s_cnn_conn, p.Convolution())
 
 
-    # Setting up SPIF Outputs (lsc: live-spikes-connection)
-    spif_f_lsc = p.external_devices.SPIFLiveSpikesConnection([F_CNN_POP_LABEL], SPIF_IP_F, SPIF_PORT)
-    spif_f_lsc.add_receive_callback(F_CNN_POP_LABEL, forward_f_cnn_data)
-    spif_f_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-        database_notify_port_num=spif_f_lsc.local_port, chip_coords=CHIP_F), label="f_cnn_output")
-    p.external_devices.activate_live_output_to(f_cnn_pop, spif_f_cnn_output)
+    #########################################################################################################
+    #                                           Medium-Speed SCNN                                           #
+    #########################################################################################################
 
-    spif_m_lsc = p.external_devices.SPIFLiveSpikesConnection([M_CNN_POP_LABEL], SPIF_IP_M, SPIF_PORT)
-    spif_m_lsc.add_receive_callback(M_CNN_POP_LABEL, forward_m_cnn_data)
-    spif_m_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-        database_notify_port_num=spif_m_lsc.local_port, chip_coords=CHIP_M), label="m_cnn_output")
-    p.external_devices.activate_live_output_to(m_cnn_pop, spif_m_cnn_output)
-   
-    spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_CNN_POP_LABEL], SPIF_IP_S, SPIF_PORT)
-    spif_s_lsc.add_receive_callback(S_CNN_POP_LABEL, forward_s_cnn_data)
-    spif_s_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
-        database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="s_cnn_output")
-    p.external_devices.activate_live_output_to(s_cnn_pop, spif_s_cnn_output)
+    
+    if ENABLE_M_SCNN:
+        
+        # Setting up Mid (medium-speed) Convolutional Layer
+        M_CNN_POP_LABEL = "m_cnn"
 
+        # Define specific parameters for different cell types
+        m_cell_params = {'tau_m': 12, **common_neuron_params}
+
+        # Define Convolutional Connector
+        m_cnn_conn = p.ConvolutionConnector(kernel_weights=m_kernel)
+        m_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**m_cell_params),
+                                structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=M_CNN_POP_LABEL)
+
+        # Create Projections from Input Layer to Convolutional Layer
+        p.Projection(p_spif_virtual_a, m_cnn_pop, m_cnn_conn, p.Convolution())
+
+        # Send spikes from Convolutional Layer out (through SPIF)
+        spif_m_lsc = p.external_devices.SPIFLiveSpikesConnection([M_CNN_POP_LABEL], SPIF_IP_M, SPIF_PORT)
+        spif_m_lsc.add_receive_callback(M_CNN_POP_LABEL, forward_m_cnn_data)
+        spif_m_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+            database_notify_port_num=spif_m_lsc.local_port, chip_coords=CHIP_M), label="m_cnn_output")
+        p.external_devices.activate_live_output_to(m_cnn_pop, spif_m_cnn_output)
+
+
+
+
+    #########################################################################################################
+    #                                               Slow SCNN                                               #
+    #########################################################################################################
+
+
+    if ENABLE_S_SCNN:
+
+        # Setting up Slow (low-speed) Convolutional Layer
+        S_CNN_POP_LABEL = "s_cnn"
+
+        # Define specific parameters for different cell types
+        s_cell_params = {'tau_m': 64, **common_neuron_params}
+
+        # Define Convolutional Connector
+        s_cnn_conn = p.ConvolutionConnector(kernel_weights=s_kernel)
+        s_cnn_pop = p.Population(OUT_WIDTH * OUT_HEIGHT, celltype(**s_cell_params),
+                                structure=p.Grid2D(OUT_WIDTH / OUT_HEIGHT), label=S_CNN_POP_LABEL)
+
+        # Create Projections from Input Layer to Convolutional Layer
+        p.Projection(p_spif_virtual_a, s_cnn_pop, s_cnn_conn, p.Convolution())
+
+        # Send spikes from Convolutional Layer out (through SPIF)
+        spif_s_lsc = p.external_devices.SPIFLiveSpikesConnection([S_CNN_POP_LABEL], SPIF_IP_S, SPIF_PORT)
+        spif_s_lsc.add_receive_callback(S_CNN_POP_LABEL, forward_s_cnn_data)
+        spif_s_cnn_output = p.Population(None, p.external_devices.SPIFOutputDevice(
+            database_notify_port_num=spif_s_lsc.local_port, chip_coords=CHIP_S), label="s_cnn_output")
+        p.external_devices.activate_live_output_to(s_cnn_pop, spif_s_cnn_output)
+
+
+    #########################################################################################################
+    #                                                Summary                                                #
+    #########################################################################################################
 
     try:
         time.sleep(1)
@@ -249,7 +300,6 @@ if __name__ == '__main__':
         quit()
 
 
-    # pdb.set_trace()
 
     print(f"Waiting for rig-power (172.16.223.{args.board-1}) to end ... ")    
     os.system(f"rig-power 172.16.223.{args.board-1}")
